@@ -47,23 +47,20 @@ If a tool lives in its own Vercel project:
 
 ## Deploy with GitHub + Vercel
 
-1. Create a new GitHub repo (e.g. `arti-small-code`).
-2. Push this folder:
+**Repository:** [github.com/serdaryaras/small_calculators](https://github.com/serdaryaras/small_calculators)
 
 ```bash
-git init
-git add .
-git commit -m "Small calculators hub home page"
-git branch -M main
-git remote add origin https://github.com/USER/arti-small-code.git
+git remote add origin https://github.com/serdaryaras/small_calculators.git
 git push -u origin main
 ```
 
-3. [vercel.com](https://vercel.com) → **Add New Project** → select the GitHub repo.
-4. Framework: **Next.js** (auto-detected). Click **Deploy**.
-5. Live URL: `https://your-project.vercel.app`
+### Vercel
 
-Every `git push` triggers an automatic redeploy on Vercel.
+1. [vercel.com](https://vercel.com) → **Add New Project** → import **serdaryaras/small_calculators**.
+2. Framework: **Next.js** (auto-detected). Root directory: `.` — click **Deploy**.
+3. Production URL: `https://small-calculators.vercel.app` (or similar).
+
+Every push to `main` triggers an automatic redeploy.
 
 ## Folder structure
 
