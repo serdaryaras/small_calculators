@@ -26,7 +26,7 @@ export const tools: Tool[] = [
   {
     id: "tank-capacities",
     title: "Tank Capacities",
-    description: "Tank volume and capacity calculations.",
+    description: "Fuel oil tank capacities, service tanks and waste holding volumes.",
     href: "/tank-capacities",
     category: "Mechanical",
   },

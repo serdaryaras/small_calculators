@@ -277,7 +277,7 @@ export function EediCalculator() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
-          <ParameterSection title="General">
+          <ParameterSection title="General" tone={0}>
             <ParameterTextInput
               name={P.shipName.name}
               description={P.shipName.description}
@@ -355,7 +355,7 @@ export function EediCalculator() {
             )}
           </ParameterSection>
 
-          <ParameterSection title="Reg. 24 — Required EEDI">
+          <ParameterSection title="Reg. 24 — Required EEDI" tone={1}>
             <ParameterSelect
               name={P.shipCategory.name}
               description={P.shipCategory.description}
@@ -376,7 +376,7 @@ export function EediCalculator() {
             />
           </ParameterSection>
 
-          <ParameterSection title="Correction factors">
+          <ParameterSection title="Correction factors" tone={2}>
             <ParameterCheckbox
               name={P.autoCorrectionFactors.name}
               description={P.autoCorrectionFactors.description}
@@ -446,7 +446,7 @@ export function EediCalculator() {
         </div>
 
         <div className="space-y-6">
-          <ParameterSection title="Propulsion">
+          <ParameterSection title="Propulsion machinery" tone={3}>
             <ParameterNumberInput
               name={P.nMainEngines.name}
               description={P.nMainEngines.description}
@@ -496,7 +496,16 @@ export function EediCalculator() {
                 />
               </div>
             ))}
+          </ParameterSection>
 
+          <ParameterSection title="Power generation" tone={6}>
+            <ParameterTextInput
+              name={P.pAe.name}
+              description={P.pAe.description}
+              value={pAeOverride}
+              onChange={setPAeOverride}
+              placeholder="auto"
+            />
             <ParameterNumberInput
               name={P.sfcAe.name}
               description={P.sfcAe.description}
@@ -512,13 +521,6 @@ export function EediCalculator() {
               onChange={setFuelAe}
               options={fuelOptions}
             />
-            <ParameterTextInput
-              name={P.pAe.name}
-              description={P.pAe.description}
-              value={pAeOverride}
-              onChange={setPAeOverride}
-              placeholder="auto"
-            />
             <ParameterNumberInput
               name={P.nPto.name}
               description={P.nPto.description}
@@ -528,17 +530,21 @@ export function EediCalculator() {
               step={1}
             />
             {ptoKw.map((kw, i) => (
-              <ParameterNumberInput
-                key={i}
-                name={`${P.ptoRated.name} ${i + 1}`}
-                description={P.ptoRated.description}
-                value={kw}
-                onChange={(v) => {
-                  const next = [...ptoKw];
-                  next[i] = v;
-                  setPtoKw(next);
-                }}
-              />
+              <div key={i} className="border-t border-[var(--card-border)]">
+                <p className="py-2 text-xs font-semibold uppercase text-[var(--muted)]">
+                  Shaft generator {i + 1}
+                </p>
+                <ParameterNumberInput
+                  name={`${P.ptoRated.name} (PTO ${i + 1})`}
+                  description={P.ptoRated.description}
+                  value={kw}
+                  onChange={(v) => {
+                    const next = [...ptoKw];
+                    next[i] = v;
+                    setPtoKw(next);
+                  }}
+                />
+              </div>
             ))}
             <ParameterNumberInput
               name={P.nPti.name}
@@ -549,17 +555,21 @@ export function EediCalculator() {
               step={1}
             />
             {ptiKw.map((kw, i) => (
-              <ParameterNumberInput
-                key={i}
-                name={`${P.pPti.name} ${i + 1}`}
-                description={P.pPti.description}
-                value={kw}
-                onChange={(v) => {
-                  const next = [...ptiKw];
-                  next[i] = v;
-                  setPtiKw(next);
-                }}
-              />
+              <div key={i} className="border-t border-[var(--card-border)]">
+                <p className="py-2 text-xs font-semibold uppercase text-[var(--muted)]">
+                  Shaft motor {i + 1}
+                </p>
+                <ParameterNumberInput
+                  name={`${P.pPti.name} (PTI ${i + 1})`}
+                  description={P.pPti.description}
+                  value={kw}
+                  onChange={(v) => {
+                    const next = [...ptiKw];
+                    next[i] = v;
+                    setPtiKw(next);
+                  }}
+                />
+              </div>
             ))}
             <ParameterNumberInput
               name={P.pEff.name}
@@ -629,7 +639,7 @@ export function EediCalculator() {
             </button>
           </div>
 
-          <ParameterSection title={`Results — ${shipName || "Project"}`}>
+          <ParameterSection title={`Results — ${shipName || "Project"}`} tone={5}>
             <ParameterField
               name="Attained EEDI"
               description="Energy Efficiency Design Index from §2.1 (g CO₂ per tonne-nautical mile)."
@@ -673,8 +683,8 @@ export function EediCalculator() {
             </p>
           ))}
 
-          <section className="overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--card)]">
-            <h3 className="border-b border-[var(--card-border)] px-4 py-3 text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
+          <section className="section-card section-card--tone-7 overflow-hidden">
+            <h3 className="section-card__header">
               Required EEDI (Phase 3 — from 1 Jan 2025)
             </h3>
             {compliance.referenceLineEedi != null && (

@@ -1,4 +1,21 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, useRef, type ReactNode } from "react";
+
+const SECTION_TONE_COUNT = 8;
+
+const SectionToneContext = createContext<(() => number) | null>(null);
+
+/** Assigns a distinct colored shadow to each ParameterSection in document order. */
+export function SectionToneProvider({ children }: { children: ReactNode }) {
+  const indexRef = useRef(0);
+  const nextTone = () => {
+    const tone = indexRef.current % SECTION_TONE_COUNT;
+    indexRef.current += 1;
+    return tone;
+  };
+  return (
+    <SectionToneContext.Provider value={nextTone}>{children}</SectionToneContext.Provider>
+  );
+}
 
 export type ParameterMeta = {
   name: string;
@@ -157,15 +174,20 @@ export function ParameterCheckbox({
 export function ParameterSection({
   title,
   children,
+  tone,
 }: {
   title: string;
   children: ReactNode;
+  /** 0–7 shadow palette; auto-assigned when wrapped in SectionToneProvider. */
+  tone?: number;
 }) {
+  const nextTone = useContext(SectionToneContext);
+  const resolvedTone = tone ?? nextTone?.() ?? 0;
+  const toneClass = `section-card--tone-${resolvedTone % SECTION_TONE_COUNT}`;
+
   return (
-    <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]">
-      <h3 className="border-b border-[var(--card-border)] px-4 py-3 text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-        {title}
-      </h3>
+    <section className={`section-card ${toneClass}`}>
+      <h3 className="section-card__header">{title}</h3>
       <div className="px-4">{children}</div>
     </section>
   );
