@@ -41,4 +41,41 @@ export const PUMP_PARAMS = {
     description:
       "Yes (default): each pump = total ÷ pump count. No: optional hint for smallest pump and others (excess ÷ remaining count).",
   },
+  isTanker: {
+    name: "Tanker — machinery-space bilge only",
+    description:
+      "Oil / chemical tanker where ER bilge pumps do not drain cargo area — Pt C [6.8.9] · Pt D, Ch 7, Sec 4.",
+  },
+  machinerySpaceLength: {
+    name: "Machinery space length C",
+    description:
+      "Longitudinal extent of propulsion machinery space (m) — tanker ER bilge main: d = 25 + 2.16√(C·(B+D)).",
+  },
+  doubleHullCargoHolds: {
+    name: "Double-hull cargo holds",
+    description:
+      "Side ballast tanks forming double hull on full hold length — bilge main and hold branches may use hold breadth amidships (BV [6.8.1] Note 1 · [6.8.3] b)).",
+  },
+  holdBreadthAmidships: {
+    name: "Hold breadth amidships B_hold",
+    description: "Actual moulded breadth of cargo holds amidships (m) — replaces ship breadth B in hold bilge formulas.",
+  },
+  bilgeCompartmentCount: {
+    name: "Number of bilge branch compartments",
+    description:
+      "Compartments for branch bilge suction pipe sizing — d₁ = 25 + 2.16√(L₁·(B+D)), min 50 mm, max 100 mm (BV [6.8.3]).",
+  },
+  bilgeCompartmentLabel: {
+    name: "Compartment label",
+    description: "Identifier for report (e.g. Hold 1, ER, Bosun store).",
+  },
+  bilgeCompartmentLength: {
+    name: "Compartment length L₁",
+    description: "Longitudinal length of compartment (m) — branch bilge suction formula.",
+  },
+  bilgeCompartmentKind: {
+    name: "Compartment type",
+    description:
+      "Cargo hold branches use B_hold when double-hull option is enabled; machinery / other use ship breadth B.",
+  },
 } as const;

@@ -28,6 +28,30 @@ export function collectPumpParameters(form: PumpCapacitiesFormState): ParameterR
       ),
     );
     rows.push(rec(P.containerTiers5Plus, form.containerTiers5Plus ? "Yes" : "No"));
+    rows.push(rec(P.isTanker, form.isTanker ? "Yes" : "No"));
+    if (form.isTanker) {
+      rows.push(rec(P.machinerySpaceLength, `${form.machinerySpaceLengthM} m`));
+    }
+    rows.push(
+      rec(P.doubleHullCargoHolds, form.doubleHullCargoHolds ? "Yes" : "No"),
+    );
+    if (form.doubleHullCargoHolds) {
+      rows.push(rec(P.holdBreadthAmidships, `${form.holdBreadthAmidshipsM} m`));
+    }
+    rows.push(rec(P.bilgeCompartmentCount, form.bilgeCompartments.length));
+    form.bilgeCompartments.forEach((compartment, index) => {
+      const kind =
+        compartment.kind === "cargo_hold"
+          ? "Cargo hold"
+          : compartment.kind === "machinery"
+            ? "Machinery"
+            : "Other";
+      rows.push({
+        name: `${P.bilgeCompartmentLabel.name} ${index + 1}`,
+        value: `${compartment.label || kind} — L₁ ${compartment.lengthM} m (${kind})`,
+        description: P.bilgeCompartmentLabel.description,
+      });
+    });
   }
 
   return rows;

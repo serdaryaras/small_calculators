@@ -15,8 +15,25 @@ import { ToolLayout } from "@/components/ToolLayout";
 import { buildPumpCapacitiesReport } from "@/lib/pump-capacities/build-report";
 import { exportPumpCapacitiesReportPdf } from "@/lib/pump-capacities/export-pdf";
 import { PUMP_PARAMS as P } from "@/lib/pump-capacities/parameters";
-import type { FireRequirements, PumpCapacitiesResult } from "@/lib/pump-capacities/types";
-import { calculatePumpCapacitiesFromForm } from "@/lib/pump-capacities/validate-and-calculate";
+import type {
+  BilgeCompartmentInput,
+  BilgeExtendedRequirements,
+  BilgeRequirements,
+  FireRequirements,
+  PumpCapacitiesResult,
+} from "@/lib/pump-capacities/types";
+import {
+  BILGE_COMPARTMENT_KIND_OPTIONS,
+  calculatePumpCapacitiesFromForm,
+} from "@/lib/pump-capacities/validate-and-calculate";
+
+function defaultBilgeCompartment(index: number): BilgeCompartmentInput {
+  return {
+    label: `Hold ${index + 1}`,
+    lengthM: 20,
+    kind: "cargo_hold",
+  };
+}
 
 function ResultValue({ children }: { children: ReactNode }) {
   return (
@@ -33,6 +50,90 @@ const SHIP_TYPE_OPTIONS = [
   { value: "passenger" as const, label: "Passenger ship" },
 ];
 
+function BilgePumpsPreview({ bilge }: { bilge: BilgeRequirements }) {
+  const tanker = bilge.bilgeMode === "tanker_machinery";
+  return (
+    <>
+      <ParameterField
+        name={tanker ? "ER bilge main d" : "Bilge main diameter"}
+        description={
+          tanker
+            ? "d = 25 + 2.16√(C·(B+D)) — Pt C [6.8.9]; ship formula [6.8.1] does not apply."
+            : "d = 25 + 1.68√(L·(B+D)) — BV [6.8.1]."
+        }
+        value={<ResultValue>{bilge.bilgeMainDiameterMm} mm</ResultValue>}
+      />
+      <ParameterField
+        name="Capacity per pump"
+        description={bilge.formulaNote}
+        value={<ResultValue>{fmt(bilge.capacityPerPumpM3H)} m³/h</ResultValue>}
+      />
+      <ParameterField
+        name="Minimum pumps"
+        description={`Water velocity ${bilge.waterVelocityMs} m/s — BV [6.7.1].`}
+        value={<ResultValue>{bilge.minPumpCount}</ResultValue>}
+      />
+      <ParameterField
+        name="Total bilge capacity"
+        description="Sum of minimum required bilge pumps."
+        value={<ResultValue>{fmt(bilge.totalRequiredM3H)} m³/h</ResultValue>}
+      />
+    </>
+  );
+}
+
+function BilgeExtendedPreview({
+  extended,
+  bilgeMode,
+}: {
+  extended: BilgeExtendedRequirements;
+  bilgeMode: BilgeRequirements["bilgeMode"];
+}) {
+  return (
+    <>
+      {extended.doubleHullCargo && bilgeMode !== "tanker_machinery" && (
+        <>
+          <ParameterField
+            name="Double-hull bilge main (B_hold)"
+            description={extended.doubleHullCargo.notes[0]}
+            value={
+              <ResultValue>
+                {extended.doubleHullCargo.bilgeMainDiameterMm} mm
+              </ResultValue>
+            }
+          />
+          <ParameterField
+            name="Reference bilge main (full B)"
+            description={`Standard formula with ship breadth B — ${extended.doubleHullCargo.standardBilgeMainDiameterMm} mm.`}
+            value={
+              <span className="text-sm tabular-nums text-[var(--muted)]">
+                {extended.doubleHullCargo.standardBilgeMainDiameterMm} mm
+              </span>
+            }
+          />
+        </>
+      )}
+      {extended.tankerMachinery && bilgeMode === "tanker_machinery" && (
+        <ParameterField
+          name="ER branch suction d₁"
+          description={extended.tankerMachinery.notes[1]}
+          value={
+            <ResultValue>{extended.tankerMachinery.branchDiameterMm} mm</ResultValue>
+          }
+        />
+      )}
+      {extended.branches.map((branch, index) => (
+        <ParameterField
+          key={`${branch.label}-${index}`}
+          name={`Branch — ${branch.label}`}
+          description={branch.formulaNote}
+          value={<ResultValue>{branch.diameterMm} mm</ResultValue>}
+        />
+      ))}
+    </>
+  );
+}
+
 function FirePumpsPreview({
   fire,
   shipType,
@@ -44,10 +145,25 @@ function FirePumpsPreview({
 }) {
   return (
     <>
+      {fire.tankerFireBasisNote && (
+        <ParameterField
+          name="Tanker — fire capacity basis"
+          description={fire.tankerFireBasisNote}
+          value={
+            <span className="text-sm text-[var(--muted)]">
+              Passenger bilge reference (not ER bilge)
+            </span>
+          }
+        />
+      )}
       {fire.passengerBilgeReferenceM3H != null && (
         <ParameterField
-          name="Passenger bilge reference"
-          description="4/3 × this value → cargo fire total (SOLAS II-2/10.2.4.1.2)."
+          name="Cargo rule — bilge reference (passenger formula)"
+          description={
+            fire.tankerFireBasisNote
+              ? "Q_passenger = 0.00565 × d² with d from [6.8.1] on same L, B, D — tanker fire total = 4/3 × this (II-2/10.2.4.1.2)."
+              : "SOLAS cargo fire total uses one passenger-ship bilge pump on the same L, B, D: 4/3 × this value (II-2/10.2.4.1.2)."
+          }
           value={
             <ResultValue>{fmt(fire.passengerBilgeReferenceM3H)} m³/h</ResultValue>
           }
@@ -116,6 +232,13 @@ export function PumpCapacitiesCalculator() {
   const [shortCargoShip, setShortCargoShip] = useState(false);
   const [containerTiers5Plus, setContainerTiers5Plus] = useState(false);
   const [firePumpsEqual, setFirePumpsEqual] = useState(true);
+  const [isTanker, setIsTanker] = useState(false);
+  const [machinerySpaceLengthM, setMachinerySpaceLengthM] = useState(18);
+  const [doubleHullCargoHolds, setDoubleHullCargoHolds] = useState(false);
+  const [holdBreadthAmidshipsM, setHoldBreadthAmidshipsM] = useState(14);
+  const [bilgeCompartments, setBilgeCompartments] = useState<BilgeCompartmentInput[]>(
+    [],
+  );
 
   const [result, setResult] = useState<PumpCapacitiesResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +257,11 @@ export function PumpCapacitiesCalculator() {
       shortCargoShip,
       containerTiers5Plus,
       firePumpsEqual,
+      isTanker,
+      machinerySpaceLengthM,
+      doubleHullCargoHolds,
+      holdBreadthAmidshipsM,
+      bilgeCompartments,
     }),
     [
       shipName,
@@ -145,8 +273,27 @@ export function PumpCapacitiesCalculator() {
       shortCargoShip,
       containerTiers5Plus,
       firePumpsEqual,
+      isTanker,
+      machinerySpaceLengthM,
+      doubleHullCargoHolds,
+      holdBreadthAmidshipsM,
+      bilgeCompartments,
     ],
   );
+
+  const setBilgeCompartmentCount = (count: number) => {
+    const next = Math.max(0, Math.min(24, Math.round(count)));
+    setBilgeCompartments((prev) => {
+      if (next === prev.length) return prev;
+      if (next < prev.length) return prev.slice(0, next);
+      return [
+        ...prev,
+        ...Array.from({ length: next - prev.length }, (_, i) =>
+          defaultBilgeCompartment(prev.length + i),
+        ),
+      ];
+    });
+  };
 
   const previewCalc = useMemo(() => {
     try {
@@ -194,9 +341,9 @@ export function PumpCapacitiesCalculator() {
       description="Bilge and fire-fighting pump capacities — Bureau Veritas NR467 (Pt C, Ch 1 Sec 10 & Ch 4 Sec 6)."
     >
       <div className="mb-6 rounded-lg border border-[var(--accent)]/30 bg-[var(--background)] px-4 py-3 text-sm">
-        <strong>Bureau Veritas NR467</strong> — bilge pumps from Pt C, Ch 1, Sec 10 [6.7–6.8];
-        fire pumps from Pt C, Ch 4, Sec 6 (SOLAS II-2/10, FSS Code Ch.12). Indicative design
-        estimate — confirm with class.
+        <strong>Bureau Veritas NR467</strong> — bilge pumps and pipe sizing from Pt C, Ch 1, Sec 10
+        [6.7–6.8] (main, branch, tanker ER, double-hull holds); fire pumps from Pt C, Ch 4, Sec 6
+        (SOLAS II-2/10, FSS Code Ch.12). Indicative design estimate — confirm with class.
       </div>
 
       <p className="mb-2 text-sm text-[var(--muted)]">
@@ -299,6 +446,91 @@ export function PumpCapacitiesCalculator() {
             </div>
           </div>
         </ParameterSection>
+
+        {shipType === "cargo" && (
+          <ParameterSection title="Bilge details" tone={1}>
+            <ParameterCheckbox
+              name={P.isTanker.name}
+              description={P.isTanker.description}
+              checked={isTanker}
+              onChange={setIsTanker}
+            />
+            {isTanker && (
+              <ParameterNumberInput
+                name={P.machinerySpaceLength.name}
+                description={P.machinerySpaceLength.description}
+                value={machinerySpaceLengthM}
+                onChange={setMachinerySpaceLengthM}
+                min={1}
+                step={0.1}
+              />
+            )}
+            <ParameterCheckbox
+              name={P.doubleHullCargoHolds.name}
+              description={P.doubleHullCargoHolds.description}
+              checked={doubleHullCargoHolds}
+              onChange={setDoubleHullCargoHolds}
+            />
+            {doubleHullCargoHolds && (
+              <ParameterNumberInput
+                name={P.holdBreadthAmidships.name}
+                description={P.holdBreadthAmidships.description}
+                value={holdBreadthAmidshipsM}
+                onChange={setHoldBreadthAmidshipsM}
+                min={1}
+                step={0.1}
+              />
+            )}
+            <ParameterNumberInput
+              name={P.bilgeCompartmentCount.name}
+              description={P.bilgeCompartmentCount.description}
+              value={bilgeCompartments.length}
+              onChange={setBilgeCompartmentCount}
+              min={0}
+              step={1}
+            />
+            {bilgeCompartments.map((compartment, index) => (
+              <div key={index} className="border-t border-[var(--card-border)]">
+                <p className="py-2 text-xs font-semibold uppercase text-[var(--muted)]">
+                  Compartment {index + 1}
+                </p>
+                <ParameterTextInput
+                  name={`${P.bilgeCompartmentLabel.name} ${index + 1}`}
+                  description={P.bilgeCompartmentLabel.description}
+                  value={compartment.label}
+                  onChange={(label) => {
+                    const next = [...bilgeCompartments];
+                    next[index] = { ...next[index], label };
+                    setBilgeCompartments(next);
+                  }}
+                />
+                <ParameterNumberInput
+                  name={`${P.bilgeCompartmentLength.name} ${index + 1}`}
+                  description={P.bilgeCompartmentLength.description}
+                  value={compartment.lengthM}
+                  onChange={(lengthM) => {
+                    const next = [...bilgeCompartments];
+                    next[index] = { ...next[index], lengthM };
+                    setBilgeCompartments(next);
+                  }}
+                  min={0.1}
+                  step={0.1}
+                />
+                <ParameterSelect
+                  name={`${P.bilgeCompartmentKind.name} ${index + 1}`}
+                  description={P.bilgeCompartmentKind.description}
+                  value={compartment.kind}
+                  onChange={(kind) => {
+                    const next = [...bilgeCompartments];
+                    next[index] = { ...next[index], kind };
+                    setBilgeCompartments(next);
+                  }}
+                  options={BILGE_COMPARTMENT_KIND_OPTIONS}
+                />
+              </div>
+            ))}
+          </ParameterSection>
+        )}
       </CalculatorPhase>
 
       <CalculatorPhase
@@ -311,32 +543,18 @@ export function PumpCapacitiesCalculator() {
           </p>
         ) : (
           <div className="grid gap-6 lg:grid-cols-2">
-            <ParameterSection title="Bilge pumps" tone={4}>
-              <ParameterField
-                name="Bilge main diameter"
-                description="d = 25 + 1.68√(L·(B+D)) — BV [6.8.1]."
-                value={
-                  <ResultValue>{previewCalc.bilge.bilgeMainDiameterMm} mm</ResultValue>
-                }
-              />
-              <ParameterField
-                name="Capacity per pump"
-                description={previewCalc.bilge.formulaNote}
-                value={
-                  <ResultValue>{fmt(previewCalc.bilge.capacityPerPumpM3H)} m³/h</ResultValue>
-                }
-              />
-              <ParameterField
-                name="Minimum pumps"
-                description={`Water velocity ${previewCalc.bilge.waterVelocityMs} m/s — BV [6.7.1].`}
-                value={<ResultValue>{previewCalc.bilge.minPumpCount}</ResultValue>}
-              />
-              <ParameterField
-                name="Total bilge capacity"
-                description="Sum of minimum required bilge pumps."
-                value={
-                  <ResultValue>{fmt(previewCalc.bilge.totalRequiredM3H)} m³/h</ResultValue>
-                }
+            <ParameterSection
+              title={
+                previewCalc.bilge.bilgeMode === "tanker_machinery"
+                  ? "Machinery-space bilge (tanker)"
+                  : "Bilge pumps"
+              }
+              tone={4}
+            >
+              <BilgePumpsPreview bilge={previewCalc.bilge} />
+              <BilgeExtendedPreview
+                extended={previewCalc.bilgeExtended}
+                bilgeMode={previewCalc.bilge.bilgeMode}
               />
             </ParameterSection>
 
@@ -399,23 +617,18 @@ export function PumpCapacitiesCalculator() {
               {reportData?.overallLabel}
             </div>
 
-            <ParameterSection title={`Bilge pumps — ${shipName || "Project"}`} tone={4}>
-              <ParameterField
-                name="Bilge main d"
-                description="Internal diameter of bilge main (mm)."
-                value={<ResultValue>{result.bilge.bilgeMainDiameterMm} mm</ResultValue>}
-              />
-              <ParameterField
-                name="Rule capacity each"
-                description={result.bilge.formulaNote}
-                value={
-                  <ResultValue>{fmt(result.bilge.capacityPerPumpM3H)} m³/h</ResultValue>
-                }
-              />
-              <ParameterField
-                name="Minimum pump count"
-                description={result.bilge.ruleRef}
-                value={<ResultValue>{result.bilge.minPumpCount}</ResultValue>}
+            <ParameterSection
+              title={
+                result.bilge.bilgeMode === "tanker_machinery"
+                  ? `Machinery-space bilge (tanker) — ${shipName || "Project"}`
+                  : `Bilge pumps — ${shipName || "Project"}`
+              }
+              tone={4}
+            >
+              <BilgePumpsPreview bilge={result.bilge} />
+              <BilgeExtendedPreview
+                extended={result.bilgeExtended}
+                bilgeMode={result.bilge.bilgeMode}
               />
             </ParameterSection>
 

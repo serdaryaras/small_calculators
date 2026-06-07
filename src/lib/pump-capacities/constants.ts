@@ -40,3 +40,16 @@ export const FIRE_CARGO_VS_PASSENGER_BILGE = 4 / 3;
 export const FIRE_PASSENGER_VS_BILGE = 2 / 3;
 
 export const BV_RULE_REF = "BV NR467 Pt C, Ch 1 Sec 10 (bilge) · Ch 4 Sec 6 (fire, SOLAS II-2)";
+
+/** BV [6.8.3] — branch bilge suction diameter constant term (mm). */
+export const BILGE_BRANCH_D_TERM = 25;
+
+/** BV [6.8.3] — branch bilge suction diameter coefficient. */
+export const BILGE_BRANCH_D_COEFF = 2.16;
+
+/** BV [6.8.3] — minimum / maximum branch bilge suction internal diameter (mm). */
+export const BILGE_BRANCH_MIN_MM = 50;
+export const BILGE_BRANCH_MAX_MM = 100;
+
+/** BV [6.8.1] b) — minimum bilge main internal diameter (mm), general arrangement. */
+export const BILGE_MAIN_MIN_MM = 60;

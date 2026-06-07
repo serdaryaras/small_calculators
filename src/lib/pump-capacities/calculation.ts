@@ -1,4 +1,11 @@
 import {
+  computeBilgeBranches,
+  computeDoubleHullCargoBilge,
+  computeTankerMachineryBilge,
+  bilgeMainDiameterMm,
+  bilgePumpCapacityM3H,
+} from "./bilge-extended";
+import {
   BILGE_MAIN_D_COEFF,
   BILGE_MAIN_D_TERM,
   BILGE_Q_COEFF_SHORT,
@@ -17,6 +24,7 @@ import {
 } from "./constants";
 import type {
   AsymmetricFireGuidance,
+  BilgeExtendedRequirements,
   BilgeRequirements,
   FireRequirements,
   PumpCapacitiesInput,
@@ -32,10 +40,7 @@ function round0(n: number): number {
   return Math.round(n);
 }
 
-/** BV NR467 Pt C, Ch 1, Sec 10 [6.8.1] — bilge main internal diameter (mm). */
-export function bilgeMainDiameterMm(L: number, B: number, D: number): number {
-  return BILGE_MAIN_D_TERM + BILGE_MAIN_D_COEFF * Math.sqrt(L * (B + D));
-}
+export { bilgeMainDiameterMm, bilgeBranchDiameterMm } from "./bilge-extended";
 
 /** Passenger-ship bilge pump capacity reference for cargo fire rule (m³/h). */
 export function passengerBilgePumpReferenceM3H(
@@ -76,36 +81,75 @@ export function computeAsymmetricFireGuidance(
   };
 }
 
-export function computeBilgeRequirements(
-  input: Pick<
-    PumpCapacitiesInput,
-    "shipType" | "lengthM" | "breadthM" | "depthM" | "shortCargoShip"
-  >,
-): BilgeRequirements {
+export function computeBilgeRequirements(input: PumpCapacitiesInput): BilgeRequirements {
   const { shipType, lengthM, breadthM, depthM, shortCargoShip } = input;
-  const d = bilgeMainDiameterMm(lengthM, breadthM, depthM);
 
   const useShortFormula =
     shipType === "cargo" &&
     (shortCargoShip || lengthM < SHORT_SHIP_LENGTH_M);
 
-  const qCoeff = useShortFormula ? BILGE_Q_COEFF_SHORT : BILGE_Q_COEFF_STANDARD;
-  const waterVelocityMs = useShortFormula ? 1.22 : 2;
-  const capacityPerPumpM3H = qCoeff * d * d;
   const minPumpCount = minBilgePumpCount(shipType);
+  const tankerMachinery = computeTankerMachineryBilge(input, useShortFormula);
+
+  // Tankers: ER bilge pumps do not drain outside machinery space — [6.8.1] / [6.8.9] · Pt D Ch 7 Sec 4.
+  if (input.isTanker && tankerMachinery) {
+    const qCoeffLabel = useShortFormula
+      ? String(BILGE_Q_COEFF_SHORT)
+      : String(BILGE_Q_COEFF_STANDARD);
+    return {
+      bilgeMode: "tanker_machinery",
+      bilgeMainDiameterMm: tankerMachinery.bilgeMainDiameterMm,
+      capacityPerPumpM3H: tankerMachinery.capacityPerPumpM3H,
+      minPumpCount,
+      totalRequiredM3H: round1(
+        minPumpCount * tankerMachinery.capacityPerPumpM3H,
+      ),
+      waterVelocityMs: tankerMachinery.waterVelocityMs,
+      formulaNote: `Q = ${qCoeffLabel} × d² — d from ER bilge main [6.8.9], not ship formula [6.8.1].`,
+      ruleRef: tankerMachinery.ruleRef,
+    };
+  }
+
+  const doubleHull = computeDoubleHullCargoBilge(input);
+  const breadthForMain =
+    doubleHull != null ? doubleHull.holdBreadthM : breadthM;
+  const d = bilgeMainDiameterMm(lengthM, breadthForMain, depthM);
+
+  const waterVelocityMs = useShortFormula ? 1.22 : 2;
+  const capacityPerPumpM3H = bilgePumpCapacityM3H(d, useShortFormula);
 
   const formulaNote = useShortFormula
     ? `Q = ${BILGE_Q_COEFF_SHORT} × d² (cargo L < ${SHORT_SHIP_LENGTH_M} m, 1.22 m/s)`
     : `Q = ${BILGE_Q_COEFF_STANDARD} × d² (2 m/s through bilge main)`;
 
+  let mainNote = `d = ${BILGE_MAIN_D_TERM} + ${BILGE_MAIN_D_COEFF}√(L·(B+D))`;
+  if (doubleHull != null) {
+    mainNote += ` — B_hold = ${doubleHull.holdBreadthM} m ([6.8.1] Note 1)`;
+  }
+
   return {
+    bilgeMode: "general",
     bilgeMainDiameterMm: round0(d),
-    capacityPerPumpM3H: round1(capacityPerPumpM3H),
+    capacityPerPumpM3H,
     minPumpCount,
     totalRequiredM3H: round1(minPumpCount * capacityPerPumpM3H),
     waterVelocityMs,
     formulaNote,
-    ruleRef: "BV NR467 Pt C, Ch 1, Sec 10 [6.7.4] · [6.8.1]",
+    ruleRef: `BV NR467 Pt C, Ch 1, Sec 10 [6.7.4] · [6.8.1] — ${mainNote}`,
+  };
+}
+
+export function computeBilgeExtendedRequirements(
+  input: PumpCapacitiesInput,
+): BilgeExtendedRequirements {
+  const useShortFormula =
+    input.shipType === "cargo" &&
+    (input.shortCargoShip || input.lengthM < SHORT_SHIP_LENGTH_M);
+
+  return {
+    branches: computeBilgeBranches(input),
+    tankerMachinery: computeTankerMachineryBilge(input, useShortFormula),
+    doubleHullCargo: computeDoubleHullCargoBilge(input),
   };
 }
 
@@ -132,11 +176,24 @@ export function computeFireRequirements(
     "FSS Code Ch.12 (emergency fire pump)",
   ];
 
+  let tankerFireBasisNote: string | null = null;
+
   if (shipType === "cargo") {
     totalRequiredM3H = FIRE_CARGO_VS_PASSENGER_BILGE * passengerRef;
-    ruleRefs.push(
-      "Cargo: total fire ≥ 4/3 × passenger bilge pump (same L, B, D) — SOLAS II-2/10.2.4.1.2",
-    );
+    if (input.isTanker) {
+      tankerFireBasisNote =
+        "Tanker remains a cargo ship for SOLAS II-2/10.2.4.1.2 — fire total uses passenger bilge reference on same L, B, D, not ER bilge pump capacity ([6.8.9]).";
+      ruleRefs.push(
+        "Tanker (cargo ship): total fire ≥ 4/3 × passenger bilge pump (same L, B, D) — SOLAS II-2/10.2.4.1.2",
+      );
+      ruleRefs.push(
+        "ER bilge [6.8.9] is independent; any bilge pump used for fire main must also satisfy Ch 4 Sec 6 capacity — Pt C [6.7.3] b).",
+      );
+    } else {
+      ruleRefs.push(
+        "Cargo: total fire ≥ 4/3 × passenger bilge pump (same L, B, D) — SOLAS II-2/10.2.4.1.2",
+      );
+    }
   } else {
     totalRequiredM3H = FIRE_PASSENGER_VS_BILGE * bilge.totalRequiredM3H;
     ruleRefs.push(
@@ -218,6 +275,7 @@ export function computeFireRequirements(
     asymmetricGuidance,
     passengerBilgeReferenceM3H:
       shipType === "cargo" ? round1(passengerRef) : null,
+    tankerFireBasisNote,
     emergencyRequiredM3H: round1(emergencyRequiredM3H),
     emergencyCappedM3H,
     ruleRefs,
@@ -228,13 +286,29 @@ export function calculatePumpCapacities(
   input: PumpCapacitiesInput,
 ): PumpCapacitiesResult {
   const bilge = computeBilgeRequirements(input);
+  const bilgeExtended = computeBilgeExtendedRequirements(input);
   const fire = computeFireRequirements(input, bilge);
 
-  const notes: string[] = [
-    BV_RULE_REF,
-    `Bilge main: d = ${BILGE_MAIN_D_TERM} + ${BILGE_MAIN_D_COEFF}√(L·(B+D)) = ${bilge.bilgeMainDiameterMm} mm.`,
-    bilge.formulaNote,
-  ];
+  const notes: string[] = [BV_RULE_REF];
+
+  if (bilge.bilgeMode === "tanker_machinery" && bilgeExtended.tankerMachinery) {
+    notes.push(
+      "Tanker: Pt C [6.8.1] ship bilge main does not apply — ER bilge per [6.8.9] · Pt D Ch 7 Sec 4.",
+    );
+    for (const n of bilgeExtended.tankerMachinery.notes) notes.push(n);
+  } else {
+    notes.push(
+      `Bilge main: d = ${BILGE_MAIN_D_TERM} + ${BILGE_MAIN_D_COEFF}√(L·(B+D)) = ${bilge.bilgeMainDiameterMm} mm.`,
+    );
+    notes.push(bilge.formulaNote);
+  }
+
+  if (bilgeExtended.doubleHullCargo && bilge.bilgeMode !== "tanker_machinery") {
+    for (const n of bilgeExtended.doubleHullCargo.notes) notes.push(n);
+  }
+  for (const branch of bilgeExtended.branches) {
+    notes.push(`${branch.label}: branch d₁ = ${branch.diameterMm} mm (L₁ = ${branch.compartmentLengthM} m).`);
+  }
 
   if (fire.totalCappedM3H) {
     notes.push(`Main fire pump total capped at ${FIRE_TOTAL_CAP_CARGO_M3H} m³/h (cargo ship).`);
@@ -245,9 +319,13 @@ export function calculatePumpCapacities(
     );
   }
 
+  if (fire.tankerFireBasisNote) {
+    notes.push(fire.tankerFireBasisNote);
+  }
+
   if (fire.asymmetricGuidance) {
     notes.push(fire.asymmetricGuidance.line);
   }
 
-  return { bilge, fire, notes };
+  return { bilge, bilgeExtended, fire, notes };
 }

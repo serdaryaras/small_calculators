@@ -54,12 +54,24 @@ function fmt(n: number, digits = 1): string {
 }
 
 function appendFirePumpRows(rows: ReportRow[], fire: PumpCapacitiesResult["fire"]) {
+  if (fire.tankerFireBasisNote) {
+    rows.push(
+      row(
+        "Tanker — fire capacity basis",
+        "Passenger bilge reference (not ER bilge)",
+        fire.tankerFireBasisNote,
+        "neutral",
+      ),
+    );
+  }
   if (fire.passengerBilgeReferenceM3H != null) {
     rows.push(
       row(
-        "Passenger bilge reference",
+        "Cargo rule — bilge reference (passenger formula)",
         `${fmt(fire.passengerBilgeReferenceM3H)} m³/h`,
-        "Each independent bilge pump — same L, B, D (cargo fire rule)",
+        fire.tankerFireBasisNote
+          ? "Q = 0.00565 × d², d from [6.8.1] on same L, B, D; fire total = 4/3 × this"
+          : "One passenger-ship bilge pump, same L, B, D; cargo fire total = 4/3 × this",
         "preview",
       ),
     );
@@ -109,18 +121,113 @@ function appendFirePumpRows(rows: ReportRow[], fire: PumpCapacitiesResult["fire"
   );
 }
 
+function appendBilgeExtendedRows(
+  rows: ReportRow[],
+  result: PumpCapacitiesResult,
+  status: "preview" | "result",
+) {
+  const { bilgeExtended } = result;
+
+  if (
+    bilgeExtended.doubleHullCargo &&
+    result.bilge.bilgeMode !== "tanker_machinery"
+  ) {
+    const dh = bilgeExtended.doubleHullCargo;
+    rows.push(
+      section("Double-hull cargo holds", dh.ruleRef),
+      row(
+        "Bilge main (B_hold)",
+        `${dh.bilgeMainDiameterMm} mm`,
+        `B_hold = ${dh.holdBreadthM} m — vs ${dh.standardBilgeMainDiameterMm} mm with full B`,
+        status,
+      ),
+    );
+  }
+
+  if (
+    bilgeExtended.tankerMachinery &&
+    result.bilge.bilgeMode !== "tanker_machinery"
+  ) {
+    const tk = bilgeExtended.tankerMachinery;
+    rows.push(
+      section("Tanker machinery-space bilge", tk.ruleRef),
+      row(
+        "ER bilge main d",
+        `${tk.bilgeMainDiameterMm} mm`,
+        `max(formula ${tk.formulaDiameterMm} mm, 2× branch area → ${tk.minMainFromBranchMm} mm)`,
+        status,
+      ),
+      row(
+        "ER branch suction d₁",
+        `${tk.branchDiameterMm} mm`,
+        `C = ${tk.machineryLengthM} m — BV [6.8.3]`,
+        status,
+      ),
+      row(
+        "ER pump capacity each",
+        `${fmt(tk.capacityPerPumpM3H)} m³/h`,
+        `${tk.waterVelocityMs} m/s through ER bilge main`,
+        status,
+      ),
+    );
+  } else if (bilgeExtended.tankerMachinery) {
+    const tk = bilgeExtended.tankerMachinery;
+    rows.push(
+      row(
+        "ER branch suction d₁",
+        `${tk.branchDiameterMm} mm`,
+        `C = ${tk.machineryLengthM} m — BV [6.8.3]; main ≥ ${tk.minMainFromBranchMm} mm (2× branch area)`,
+        status,
+      ),
+    );
+  }
+
+  if (bilgeExtended.branches.length > 0) {
+    rows.push(
+      section(
+        "Branch bilge suctions",
+        "BV [6.8.3] — d₁ = 25 + 2.16√(L₁·(B+D)), min 50 mm, max 100 mm",
+      ),
+    );
+    for (const branch of bilgeExtended.branches) {
+      rows.push(
+        row(
+          branch.label,
+          `${branch.diameterMm} mm`,
+          `L₁ = ${branch.compartmentLengthM} m · B_used = ${branch.breadthUsedM} m`,
+          status,
+        ),
+      );
+    }
+  }
+}
+
 function buildPreviewRows(result: PumpCapacitiesResult): ReportRow[] {
   const { bilge, fire } = result;
   const rows: ReportRow[] = [];
 
-  rows.push(section("Bilge system", "BV NR467 Pt C, Ch 1, Sec 10."));
+  const tankerBilge = bilge.bilgeMode === "tanker_machinery";
   rows.push(
-    row("Bilge main diameter d", `${bilge.bilgeMainDiameterMm} mm`, "d = 25 + 1.68√(L·(B+D))", "preview"),
+    section(
+      tankerBilge ? "Machinery-space bilge (tanker)" : "Bilge system",
+      tankerBilge
+        ? "Pt C [6.8.9] · Pt D Ch 7 Sec 4 — [6.8.1] ship formula not applicable"
+        : "BV NR467 Pt C, Ch 1, Sec 10.",
+    ),
+  );
+  rows.push(
+    row(
+      tankerBilge ? "ER bilge main d" : "Bilge main diameter d",
+      `${bilge.bilgeMainDiameterMm} mm`,
+      tankerBilge ? "d = 25 + 2.16√(C·(B+D))" : "d = 25 + 1.68√(L·(B+D))",
+      "preview",
+    ),
     row("Water velocity", `${bilge.waterVelocityMs} m/s`, "Through required bilge main", "preview"),
     row("Capacity per bilge pump", `${fmt(bilge.capacityPerPumpM3H)} m³/h`, bilge.formulaNote, "preview"),
     row("Minimum bilge pumps", bilge.minPumpCount, "BV [6.7.1] — cargo 2, passenger 3", "preview"),
     row("Total bilge capacity", `${fmt(bilge.totalRequiredM3H)} m³/h`, `${bilge.minPumpCount} × ${fmt(bilge.capacityPerPumpM3H)} m³/h`, "preview"),
   );
+  appendBilgeExtendedRows(rows, result, "preview");
 
   rows.push(section("Fire fighting", "SOLAS II-2/10 via BV Pt C, Ch 4, Sec 6."));
   appendFirePumpRows(rows, fire);
@@ -132,12 +239,24 @@ function buildResultsRows(result: PumpCapacitiesResult): ReportRow[] {
   const { bilge, fire } = result;
   const rows: ReportRow[] = [];
 
-  rows.push(section("Bilge pumps — required", bilge.ruleRef));
+  const tankerBilge = bilge.bilgeMode === "tanker_machinery";
   rows.push(
-    row("Bilge main d", `${bilge.bilgeMainDiameterMm} mm`, "Internal diameter of bilge main", "result"),
+    section(
+      tankerBilge ? "Machinery-space bilge — required (tanker)" : "Bilge pumps — required",
+      bilge.ruleRef,
+    ),
+  );
+  rows.push(
+    row(
+      tankerBilge ? "ER bilge main d" : "Bilge main d",
+      `${bilge.bilgeMainDiameterMm} mm`,
+      tankerBilge ? "ER bilge main — not [6.8.1] ship formula" : "Internal diameter of bilge main",
+      "result",
+    ),
     row("Rule capacity each", `${fmt(bilge.capacityPerPumpM3H)} m³/h`, bilge.formulaNote, "result"),
     row("Min pump count", bilge.minPumpCount, "Power bilge pumps connected to bilge main", "result"),
   );
+  appendBilgeExtendedRows(rows, result, "result");
 
   rows.push(section("Fire pumps — required", "SOLAS II-2/10.2.4 · FSS Code Ch.12"));
   rows.push(
