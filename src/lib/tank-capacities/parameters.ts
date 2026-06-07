@@ -14,12 +14,36 @@ export const TANK_PARAMS = {
   endurance: {
     name: "Endurance",
     description:
-      "Total autonomy period (days). Reserved for fresh water, sewage and hotel-load sections.",
+      "Fresh-water replenishment period (days). FW tank capacity = daily FW demand × Endurance. Leave 0 to use voyage time (Range ÷ V_s) instead.",
   },
   nonDischargePeriod: {
     name: "Non-discharge period",
     description:
-      "Period without discharge to sea (days). Reserved for sewage / holding-tank sizing.",
+      "Period without sewage discharge to sea (days). Holding-tank capacity = daily wastewater × this period.",
+  },
+  personsOnBoard: {
+    name: "Persons on board",
+    description: "Crew and passengers — multiplier for wastewater generation rates.",
+  },
+  shipType: {
+    name: "Ship type",
+    description:
+      "Cruise, Ro-Pax or cargo — selects L/person/day rates; gray, laundry and galley feed one gray-water tank.",
+  },
+  vacuumToilet: {
+    name: "Vacuum toilet system",
+    description:
+      "When in use, black-water generation is 12 L/person/day instead of 100 L/person/day.",
+  },
+  withCompactor: {
+    name: "Waste compactor",
+    description:
+      "When in use, higher bulk density (kg/m³) applies — lower stowage volume for plastic and glass.",
+  },
+  solidWasteIncinerator: {
+    name: "Solid-waste incinerator",
+    description:
+      "When in use, plastic, glass and food stowage volume is multiplied by 0.6 (40% reduction). Mass unchanged.",
   },
   nMainEngines: {
     name: "Number of main engines",

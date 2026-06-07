@@ -3,11 +3,18 @@ import { SERVICE_TANK_HOURS } from "./constants";
 import type {
   BoilerConsumer,
   EngineConsumer,
+  FreshWaterResult,
   FuelConsumerInput,
   FuelTypeBreakdown,
+  FwAutonomy,
+  FwAutonomySource,
   ServiceTankRequirement,
+  SewageHolding,
   TankCapacitiesResult,
+  WastewaterResult,
 } from "./types";
+import { computeSolidWaste } from "./solid-waste";
+import { computeWastewater } from "./wastewater";
 
 function engineFuelKg(powerKw: number, sfocGPerKwh: number, hours: number): number {
   return (powerKw * sfocGPerKwh * hours) / 1000;
@@ -41,6 +48,38 @@ function addMass(
 
 export function voyageHours(rangeNm: number, vsKn: number): number {
   return rangeNm / vsKn;
+}
+
+/** FW autonomy: Endurance when given (> 0), otherwise voyage time from Range ÷ V_s. */
+export function resolveFwAutonomy(
+  enduranceDays: number,
+  voyageDays: number,
+): FwAutonomy {
+  const useEndurance = Number.isFinite(enduranceDays) && enduranceDays > 0;
+  const days = useEndurance ? enduranceDays : voyageDays;
+  const source: FwAutonomySource = useEndurance ? "endurance" : "range_voyage";
+  return { days, hours: days * 24, source };
+}
+
+/** Sewage / holding-tank period from non-discharge period. */
+export function resolveSewageHolding(nonDischargePeriodDays: number): SewageHolding {
+  const days = nonDischargePeriodDays;
+  return { days, hours: days * 24 };
+}
+
+/** Daily FW equals total daily wastewater; tank capacity = daily × FW autonomy (Endurance). */
+export function computeFreshWater(
+  wastewater: WastewaterResult,
+  fwAutonomy: FwAutonomy,
+): FreshWaterResult {
+  const dailyLiters = wastewater.totalDailyLiters;
+  const dailyM3 = wastewater.totalDailyM3;
+  return {
+    dailyLiters,
+    dailyM3,
+    tankLiters: dailyLiters * fwAutonomy.days,
+    tankM3: dailyM3 * fwAutonomy.days,
+  };
 }
 
 export function accumulateRangeFuel(
@@ -133,6 +172,22 @@ export function calculateTankCapacities(
 ): TankCapacitiesResult {
   const { ship, mainEngines, auxiliaryEngines, boilers } = input;
   const hours = voyageHours(ship.rangeNm, ship.vsKn);
+  const voyageDays = hours / 24;
+  const fwAutonomy = resolveFwAutonomy(ship.enduranceDays, voyageDays);
+  const sewageHolding = resolveSewageHolding(ship.nonDischargePeriodDays);
+  const wastewater = computeWastewater(
+    ship.shipType,
+    ship.vacuumToilet,
+    ship.personsOnBoard,
+    ship.nonDischargePeriodDays,
+  );
+  const freshWater = computeFreshWater(wastewater, fwAutonomy);
+  const solidWaste = computeSolidWaste(
+    ship.personsOnBoard,
+    fwAutonomy,
+    ship.withCompactor,
+    ship.solidWasteIncinerator,
+  );
 
   const rangeFuelByType = accumulateRangeFuel(
     hours,
@@ -157,7 +212,12 @@ export function calculateTankCapacities(
 
   return {
     voyageHours: hours,
-    voyageDays: hours / 24,
+    voyageDays,
+    fwAutonomy,
+    sewageHolding,
+    wastewater,
+    freshWater,
+    solidWaste,
     rangeFuelByType,
     totalFuelMassKg,
     totalFuelVolumeM3,

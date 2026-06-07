@@ -23,7 +23,7 @@ export type ParameterMeta = {
 };
 
 const inputClass =
-  "w-full max-w-xs rounded-lg border border-[var(--card-border)] bg-[var(--background)] px-3 py-2 text-sm tabular-nums outline-none focus:border-[var(--accent)]";
+  "w-full rounded-lg border border-[var(--card-border)] bg-[var(--background)] px-3 py-2 text-sm tabular-nums outline-none focus:border-[var(--accent)]";
 
 type BaseProps = ParameterMeta & {
   className?: string;
@@ -38,13 +38,13 @@ export function ParameterField({
 }: BaseProps & { value: ReactNode }) {
   return (
     <div
-      className={`grid gap-2 border-b border-[var(--card-border)] py-4 last:border-b-0 sm:grid-cols-[minmax(10rem,1fr)_minmax(8rem,12rem)] sm:items-start ${className}`}
+      className={`grid gap-2 border-b border-[var(--card-border)] py-4 last:border-b-0 sm:grid-cols-[minmax(10rem,1fr)_12rem] sm:items-start ${className}`}
     >
       <div className="sm:col-span-1">
         <p className="text-sm font-semibold text-[var(--foreground)]">{name}</p>
         <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">{description}</p>
       </div>
-      <div className="sm:col-span-1 sm:justify-self-end sm:text-right">{value}</div>
+      <div className="w-full sm:w-[12rem] sm:justify-self-end sm:text-right">{value}</div>
     </div>
   );
 }
@@ -67,7 +67,7 @@ export function ParameterTextInput({
       value={
         <input
           type="text"
-          className={`${inputClass} sm:ml-auto`}
+          className={inputClass}
           value={value}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
@@ -99,7 +99,7 @@ export function ParameterNumberInput({
       value={
         <input
           type="number"
-          className={`${inputClass} sm:ml-auto`}
+          className={inputClass}
           value={value}
           min={min}
           step={step}
@@ -128,7 +128,7 @@ export function ParameterSelect<T extends string>({
       description={description}
       value={
         <select
-          className={`${inputClass} sm:ml-auto`}
+          className={inputClass}
           value={value}
           onChange={(e) => onChange(e.target.value as T)}
         >
@@ -157,7 +157,7 @@ export function ParameterCheckbox({
       name={name}
       description={description}
       value={
-        <label className="inline-flex cursor-pointer items-center gap-2 sm:ml-auto">
+        <label className="flex w-full cursor-pointer items-center justify-end gap-2">
           <input
             type="checkbox"
             checked={checked}
@@ -189,6 +189,29 @@ export function ParameterSection({
     <section className={`section-card ${toneClass}`}>
       <h3 className="section-card__header">{title}</h3>
       <div className="px-4">{children}</div>
+    </section>
+  );
+}
+
+/** Top-level calculator block — Input, Preview, Results. */
+export function CalculatorPhase({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="calculator-phase">
+      <header className="calculator-phase__header">
+        <h2 className="calculator-phase__title">{title}</h2>
+        {description ? (
+          <p className="calculator-phase__description">{description}</p>
+        ) : null}
+      </header>
+      <div className="calculator-phase__body">{children}</div>
     </section>
   );
 }

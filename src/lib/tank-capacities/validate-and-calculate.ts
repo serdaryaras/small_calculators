@@ -38,8 +38,9 @@ export function validateTankCapacitiesForm(
 
   pushPositive(errors, "V_s (service speed)", form.ship.vsKn);
   pushPositive(errors, "Range", form.ship.rangeNm);
-  pushPositive(errors, "Endurance", form.ship.enduranceDays);
+  pushNonNegative(errors, "Endurance", form.ship.enduranceDays);
   pushPositive(errors, "Non-discharge period", form.ship.nonDischargePeriodDays);
+  pushPositive(errors, "Persons on board", form.ship.personsOnBoard);
 
   form.mainEngines.forEach((e, i) => {
     pushPositive(errors, `Main engine ${i + 1} — service power`, e.powerKw);

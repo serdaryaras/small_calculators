@@ -2,6 +2,8 @@
 
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  CalculatorPhase,
+  ParameterCheckbox,
   ParameterField,
   ParameterNumberInput,
   ParameterSection,
@@ -19,9 +21,28 @@ import type {
   BoilerConsumer,
   EngineConsumer,
   TankCapacitiesResult,
+  WastewaterShipType,
+  WastewaterTankId,
+  WastewaterTankResult,
 } from "@/lib/tank-capacities/types";
+import {
+  computeWastewater,
+  WASTEWATER_SHIP_TYPES,
+  wastewaterTankRateDescription,
+} from "@/lib/tank-capacities/wastewater";
+import {
+  computeFreshWater,
+  resolveFwAutonomy,
+  resolveSewageHolding,
+  voyageHours,
+} from "@/lib/tank-capacities/calculation";
+import {
+  computeSolidWaste,
+  INCINERATOR_CATEGORY_LABELS,
+} from "@/lib/tank-capacities/solid-waste";
+import { buildTankCapacitiesReport } from "@/lib/tank-capacities/build-report";
+import { exportTankCapacitiesReportPdf } from "@/lib/tank-capacities/export-pdf";
 import { calculateTankCapacitiesFromForm } from "@/lib/tank-capacities/validate-and-calculate";
-import { voyageHours } from "@/lib/tank-capacities/calculation";
 
 function ResultValue({ children }: { children: ReactNode }) {
   return (
@@ -31,6 +52,133 @@ function ResultValue({ children }: { children: ReactNode }) {
 
 function fmt(n: number, digits = 1): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: digits });
+}
+
+function fmtDuration(days: number, hours: number): string {
+  return `${fmt(days, 1)} days (${fmt(hours, 0)} h)`;
+}
+
+const WASTEWATER_TANK_META: Record<
+  WastewaterTankId,
+  { tone: number; subtitle: string; badge: string }
+> = {
+  black: {
+    tone: 5,
+    badge: "Tank 1 — separate",
+    subtitle: "Dedicated black-water holding tank — toilet waste only.",
+  },
+  gray: {
+    tone: 6,
+    badge: "Tank 2 — separate",
+    subtitle: "Dedicated gray-water holding tank — gray water, laundry and galley combined.",
+  },
+};
+
+function WastewaterTankFields({
+  tank,
+  personsOnBoard,
+  holdingDays,
+  preview,
+}: {
+  tank: WastewaterTankResult;
+  personsOnBoard: number;
+  holdingDays: number;
+  preview?: boolean;
+}) {
+  const suffix = preview ? " (preview)" : "";
+
+  return (
+    <>
+      <ParameterField
+        name={`Daily generation${suffix}`}
+        description={
+          tank.id === "gray"
+            ? `Gray + laundry + galley — ${wastewaterTankRateDescription(tank, personsOnBoard)}`
+            : wastewaterTankRateDescription(tank, personsOnBoard)
+        }
+        value={
+          <ResultValue>
+            {fmt(tank.dailyLiters, 0)} L/day ({fmt(tank.dailyM3, 2)} m³/day)
+          </ResultValue>
+        }
+      />
+      {tank.id === "gray" && (
+        <ul className="mb-2 space-y-0.5 border-b border-[var(--card-border)] px-1 pb-3 text-xs text-[var(--muted)]">
+          {tank.components.map((c) => (
+            <li key={c.stream}>
+              {c.label}: {fmt(c.rateLPerPersonDay, 0)} L/person/day → {fmt(c.dailyLiters, 0)}{" "}
+              L/day
+            </li>
+          ))}
+        </ul>
+      )}
+      <ParameterField
+        name={`Holding capacity${suffix}`}
+        description={`This tank only — non-discharge period ${fmt(holdingDays, 1)} days`}
+        value={
+          <ResultValue>
+            {fmt(tank.holdingLiters, 0)} L ({fmt(tank.holdingM3, 2)} m³)
+          </ResultValue>
+        }
+      />
+    </>
+  );
+}
+
+function WastewaterTankPanel({
+  tank,
+  personsOnBoard,
+  holdingDays,
+  preview,
+}: {
+  tank: WastewaterTankResult;
+  personsOnBoard: number;
+  holdingDays: number;
+  preview?: boolean;
+}) {
+  const meta = WASTEWATER_TANK_META[tank.id];
+
+  if (preview) {
+    return (
+      <section
+        className={`section-card section-card--tone-${meta.tone} my-4 overflow-hidden`}
+      >
+        <div className="section-card__header flex flex-wrap items-center justify-between gap-2">
+          <span>{tank.label} tank</span>
+          <span className="rounded-full bg-black/5 px-2 py-0.5 text-[0.65rem] font-semibold tracking-wide dark:bg-white/10">
+            {meta.badge}
+          </span>
+        </div>
+        <p className="border-b border-[var(--card-border)] px-4 py-2 text-xs leading-relaxed text-[var(--muted)]">
+          {meta.subtitle}
+        </p>
+        <div className="px-4">
+          <WastewaterTankFields
+            tank={tank}
+            personsOnBoard={personsOnBoard}
+            holdingDays={holdingDays}
+            preview
+          />
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <ParameterSection title={`${tank.label} tank`} tone={meta.tone}>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--card-border)] py-3">
+        <p className="text-xs leading-relaxed text-[var(--muted)]">{meta.subtitle}</p>
+        <span className="shrink-0 rounded-full border border-[var(--card-border)] bg-[var(--background)] px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--foreground)]">
+          {meta.badge}
+        </span>
+      </div>
+      <WastewaterTankFields
+        tank={tank}
+        personsOnBoard={personsOnBoard}
+        holdingDays={holdingDays}
+      />
+    </ParameterSection>
+  );
 }
 
 const defaultMe: EngineConsumer = {
@@ -59,6 +207,11 @@ export function TankCapacitiesCalculator() {
   const [rangeNm, setRangeNm] = useState(6_000);
   const [enduranceDays, setEnduranceDays] = useState(10);
   const [nonDischargeDays, setNonDischargeDays] = useState(7);
+  const [personsOnBoard, setPersonsOnBoard] = useState(15);
+  const [shipType, setShipType] = useState<WastewaterShipType>(4);
+  const [vacuumToilet, setVacuumToilet] = useState(false);
+  const [withCompactor, setWithCompactor] = useState(false);
+  const [solidWasteIncinerator, setSolidWasteIncinerator] = useState(false);
 
   const [nMe, setNMe] = useState(1);
   const [mainEngines, setMainEngines] = useState<EngineConsumer[]>([{ ...defaultMe }]);
@@ -81,9 +234,37 @@ export function TankCapacitiesCalculator() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   const previewHours = voyageHours(rangeNm, vsKn);
+  const previewVoyageDays = previewHours / 24;
+  const previewFw = resolveFwAutonomy(enduranceDays, previewVoyageDays);
+  const previewSewage = resolveSewageHolding(nonDischargeDays);
+  const previewWastewater = useMemo(
+    () =>
+      computeWastewater(
+        shipType,
+        vacuumToilet,
+        personsOnBoard,
+        nonDischargeDays,
+      ),
+    [shipType, vacuumToilet, personsOnBoard, nonDischargeDays],
+  );
+  const previewFreshWater = useMemo(
+    () => computeFreshWater(previewWastewater, previewFw),
+    [previewWastewater, previewFw],
+  );
+  const previewSolidWaste = useMemo(
+    () =>
+      computeSolidWaste(
+        personsOnBoard,
+        previewFw,
+        withCompactor,
+        solidWasteIncinerator,
+      ),
+    [personsOnBoard, previewFw, withCompactor, solidWasteIncinerator],
+  );
 
   const fuelsInUse = useMemo(() => {
     const set = new Set<FuelType>();
@@ -139,6 +320,11 @@ export function TankCapacitiesCalculator() {
         rangeNm,
         enduranceDays,
         nonDischargePeriodDays: nonDischargeDays,
+        personsOnBoard,
+        shipType,
+        vacuumToilet,
+        withCompactor,
+        solidWasteIncinerator,
       },
       mainEngines,
       auxiliaryEngines,
@@ -152,6 +338,11 @@ export function TankCapacitiesCalculator() {
       rangeNm,
       enduranceDays,
       nonDischargeDays,
+      personsOnBoard,
+      shipType,
+      vacuumToilet,
+      withCompactor,
+      solidWasteIncinerator,
       mainEngines,
       auxiliaryEngines,
       boilers,
@@ -159,6 +350,21 @@ export function TankCapacitiesCalculator() {
       serviceTankVolume,
     ],
   );
+
+  const reportData = useMemo(() => {
+    if (!result) return null;
+    return buildTankCapacitiesReport(formState, result, warnings, shipName);
+  }, [result, formState, warnings, shipName]);
+
+  const handleDownloadPdf = async () => {
+    if (!reportData) return;
+    setExportingPdf(true);
+    try {
+      await exportTankCapacitiesReportPdf(reportData);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   const handleCalculate = () => {
     setError(null);
@@ -187,11 +393,15 @@ export function TankCapacitiesCalculator() {
       title="Tank Capacities"
       description="Fuel tank capacities and waste holding volumes for ship design."
     >
-      <p className="mb-4 text-sm text-[var(--muted)]">
-        Each input follows: <strong>parameter name</strong> · <strong>value</strong> ·{" "}
-        <strong>description</strong>. Fresh water and sewage sections will follow.
+      <p className="mb-2 text-sm text-[var(--muted)]">
+        Each field follows: <strong>parameter name</strong> · <strong>value</strong> ·{" "}
+        <strong>description</strong>.
       </p>
 
+      <CalculatorPhase
+        title="Input"
+        description="Ship, machinery and fuel properties — edit values here."
+      >
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
           <ParameterSection title="Ship" tone={0}>
@@ -201,6 +411,16 @@ export function TankCapacitiesCalculator() {
               value={shipName}
               onChange={setShipName}
             />
+            <ParameterSelect
+              name={P.shipType.name}
+              description={P.shipType.description}
+              value={String(shipType)}
+              onChange={(v) => setShipType(Number(v) as WastewaterShipType)}
+              options={WASTEWATER_SHIP_TYPES.map((t) => ({
+                value: String(t.value),
+                label: t.label,
+              }))}
+            />
             <ParameterNumberInput
               name={P.vs.name}
               description={P.vs.description}
@@ -208,6 +428,14 @@ export function TankCapacitiesCalculator() {
               onChange={setVsKn}
               min={0.1}
               step={0.1}
+            />
+            <ParameterNumberInput
+              name={P.personsOnBoard.name}
+              description={P.personsOnBoard.description}
+              value={personsOnBoard}
+              onChange={setPersonsOnBoard}
+              min={1}
+              step={1}
             />
             <ParameterNumberInput
               name={P.range.name}
@@ -222,8 +450,9 @@ export function TankCapacitiesCalculator() {
               description={P.endurance.description}
               value={enduranceDays}
               onChange={setEnduranceDays}
-              min={0.1}
+              min={0}
               step={0.5}
+              placeholder="0 = from range"
             />
             <ParameterNumberInput
               name={P.nonDischargePeriod.name}
@@ -233,14 +462,23 @@ export function TankCapacitiesCalculator() {
               min={0.1}
               step={0.5}
             />
-            <ParameterField
-              name="Voyage duration (preview)"
-              description="Range ÷ V_s — used for total fuel-oil quantity at range."
-              value={
-                <ResultValue>
-                  {fmt(previewHours, 0)} h ({fmt(previewHours / 24, 1)} days)
-                </ResultValue>
-              }
+            <ParameterCheckbox
+              name={P.vacuumToilet.name}
+              description={P.vacuumToilet.description}
+              checked={vacuumToilet}
+              onChange={setVacuumToilet}
+            />
+            <ParameterCheckbox
+              name={P.withCompactor.name}
+              description={P.withCompactor.description}
+              checked={withCompactor}
+              onChange={setWithCompactor}
+            />
+            <ParameterCheckbox
+              name={P.solidWasteIncinerator.name}
+              description={P.solidWasteIncinerator.description}
+              checked={solidWasteIncinerator}
+              onChange={setSolidWasteIncinerator}
             />
           </ParameterSection>
 
@@ -446,46 +684,193 @@ export function TankCapacitiesCalculator() {
           </ParameterSection>
         </div>
       </div>
+      </CalculatorPhase>
 
-      <div className="mt-8">
-        <button
-          type="button"
-          onClick={handleCalculate}
-          disabled={calculating}
-          className="rounded-lg bg-[var(--accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-        >
-          {calculating ? "Calculating…" : "Calculate tank capacities"}
-        </button>
-      </div>
+      <CalculatorPhase
+        title="Preview"
+        description="Live estimates from current inputs — updates as you type."
+      >
+        <ParameterSection title="Time bases" tone={5}>
+          <ParameterField
+            name="Voyage duration"
+            description="Range ÷ V_s — total fuel-oil quantity at range."
+            value={
+              <ResultValue>
+                {fmtDuration(previewVoyageDays, previewHours)}
+              </ResultValue>
+            }
+          />
+          <ParameterField
+            name="FW autonomy"
+            description={
+              previewFw.source === "endurance"
+                ? "From Endurance — fresh-water and solid-waste stowage period."
+                : "Endurance is 0 — using voyage time (Range ÷ V_s)."
+            }
+            value={
+              <ResultValue>
+                {fmtDuration(previewFw.days, previewFw.hours)}
+              </ResultValue>
+            }
+          />
+          <ParameterField
+            name="Sewage holding"
+            description="From Non-discharge period — holding-tank capacity."
+            value={
+              <ResultValue>
+                {fmtDuration(previewSewage.days, previewSewage.hours)}
+              </ResultValue>
+            }
+          />
+        </ParameterSection>
 
-      {error && (
-        <div className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
-          <p className="font-medium">Cannot calculate — fix the following:</p>
-          <ul className="mt-2 list-inside list-disc space-y-1">
-            {error.split("\n").map((line, i) => (
-              <li key={i}>{line}</li>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <ParameterSection title="Wastewater & FW" tone={4}>
+            {previewWastewater.tanks.map((tank) => (
+              <WastewaterTankPanel
+                key={tank.id}
+                tank={tank}
+                personsOnBoard={personsOnBoard}
+                holdingDays={nonDischargeDays}
+                preview
+              />
             ))}
-          </ul>
-        </div>
-      )}
+            <ParameterField
+              name="Wastewater total"
+              description="Black-water + gray-water tanks — daily generation."
+              value={
+                <ResultValue>
+                  {fmt(previewWastewater.totalDailyLiters, 0)} L/day (
+                  {fmt(previewWastewater.totalDailyM3, 2)} m³/day)
+                </ResultValue>
+              }
+            />
+            <ParameterField
+              name="Holding total"
+              description={`Black + gray tanks over non-discharge period (${fmt(nonDischargeDays, 1)} days).`}
+              value={
+                <ResultValue>
+                  {fmt(previewWastewater.totalHoldingLiters, 0)} L (
+                  {fmt(previewWastewater.totalHoldingM3, 2)} m³)
+                </ResultValue>
+              }
+            />
+            <ParameterField
+              name="FW daily demand"
+              description="Equals total daily wastewater."
+              value={
+                <ResultValue>
+                  {fmt(previewFreshWater.dailyLiters, 0)} L/day (
+                  {fmt(previewFreshWater.dailyM3, 2)} m³/day)
+                </ResultValue>
+              }
+            />
+            <ParameterField
+              name="FW tank capacity"
+              description={`Daily FW × FW autonomy (${fmt(previewFw.days, 1)} days).`}
+              value={
+                <ResultValue>
+                  {fmt(previewFreshWater.tankLiters, 0)} L (
+                  {fmt(previewFreshWater.tankM3, 2)} m³)
+                </ResultValue>
+              }
+            />
+          </ParameterSection>
 
-      {warnings.length > 0 && (
-        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-          {warnings.map((w, i) => (
-            <p key={i}>{w}</p>
-          ))}
+          <ParameterSection title="Solid waste" tone={7}>
+            <p className="border-b border-[var(--card-border)] px-0 py-3 text-xs leading-relaxed text-[var(--muted)]">
+              Stowage over FW autonomy ({fmt(previewFw.days, 1)} days).
+              {withCompactor ? " Compactor in use." : ""}
+              {solidWasteIncinerator
+                ? ` Incinerator: ${INCINERATOR_CATEGORY_LABELS} volume × 0.6.`
+                : ""}
+            </p>
+            {previewSolidWaste.categories.map((row) => (
+              <div
+                key={row.category}
+                className="border-b border-[var(--card-border)] py-4 last:border-b-0"
+              >
+                <ParameterField
+                  name={row.label}
+                  description={`${fmt(row.rateKgPerPersonDay, 1)} kg/person/day × ${personsOnBoard} persons`}
+                  value={
+                    <ResultValue>
+                      {fmt(row.dailyMassKg, 1)} kg/day · {fmt(row.dailyVolumeM3, 1)} m³/day
+                    </ResultValue>
+                  }
+                />
+                <ParameterField
+                  name={`${row.label} — stowage`}
+                  description={`Over endurance period (${fmt(previewFw.days, 1)} days)`}
+                  value={
+                    <ResultValue>
+                      {fmt(row.voyageMassKg, 1)} kg · {fmt(row.voyageVolumeM3, 1)} m³
+                    </ResultValue>
+                  }
+                />
+              </div>
+            ))}
+          </ParameterSection>
         </div>
-      )}
+      </CalculatorPhase>
 
-      {result && (
-        <div ref={resultsRef} className="mt-8 space-y-6">
+      <CalculatorPhase
+        title="Results"
+        description="Full calculation after Calculate — includes fuel at range and service-tank checks."
+      >
+        <div className="no-print flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleCalculate}
+            disabled={calculating}
+            className="rounded-lg bg-[var(--accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+          >
+            {calculating ? "Calculating…" : "Calculate tank capacities"}
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={!reportData || exportingPdf}
+            className="rounded-lg bg-[var(--accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {exportingPdf ? "PDF…" : "Download PDF"}
+          </button>
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+            <p className="font-medium">Cannot calculate — fix the following:</p>
+            <ul className="mt-2 list-inside list-disc space-y-1">
+              {error.split("\n").map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {warnings.length > 0 && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            {warnings.map((w, i) => (
+              <p key={i}>{w}</p>
+            ))}
+          </div>
+        )}
+
+        {!result && !error && (
+          <p className="text-sm text-[var(--muted)]">
+            Press <strong>Calculate tank capacities</strong> to generate results.
+          </p>
+        )}
+
+        {result && (
+        <div ref={resultsRef} className="space-y-6">
           <ParameterSection title={`Results — ${shipName || "Project"}`} tone={5}>
             <ParameterField
               name="Voyage duration"
               description="Time to cover design range at service speed."
               value={
                 <ResultValue>
-                  {fmt(result.voyageHours, 0)} h ({fmt(result.voyageDays, 1)} days)
+                  {fmtDuration(result.voyageDays, result.voyageHours)}
                 </ResultValue>
               }
             />
@@ -499,6 +884,142 @@ export function TankCapacitiesCalculator() {
                 </ResultValue>
               }
             />
+            <ParameterField
+              name="FW autonomy"
+              description={
+                result.fwAutonomy.source === "endurance"
+                  ? "From Endurance — fresh-water tank sizing period."
+                  : "From Range ÷ V_s (Endurance not set) — fresh-water tank sizing period."
+              }
+              value={
+                <ResultValue>
+                  {fmtDuration(result.fwAutonomy.days, result.fwAutonomy.hours)}
+                </ResultValue>
+              }
+            />
+            <ParameterField
+              name="Sewage holding period"
+              description="From Non-discharge period — holding-tank sizing period."
+              value={
+                <ResultValue>
+                  {fmtDuration(result.sewageHolding.days, result.sewageHolding.hours)}
+                </ResultValue>
+              }
+            />
+          </ParameterSection>
+
+          <ParameterSection title="Fresh water" tone={3}>
+            <p className="border-b border-[var(--card-border)] px-0 py-3 text-xs leading-relaxed text-[var(--muted)]">
+              Daily FW demand equals total daily wastewater. FW can be replenished over the
+              Endurance period only — tank capacity = daily demand × FW autonomy.
+            </p>
+            <ParameterField
+              name="FW daily demand"
+              description="Equals total daily wastewater generation."
+              value={
+                <ResultValue>
+                  {fmt(result.freshWater.dailyLiters, 0)} L/day (
+                  {fmt(result.freshWater.dailyM3, 2)} m³/day)
+                </ResultValue>
+              }
+            />
+            <ParameterField
+              name="FW tank capacity"
+              description={
+                result.fwAutonomy.source === "endurance"
+                  ? `Daily FW × Endurance (${fmt(result.fwAutonomy.days, 1)} days).`
+                  : `Daily FW × voyage time (${fmt(result.fwAutonomy.days, 1)} days — Endurance not set).`
+              }
+              value={
+                <ResultValue>
+                  {fmt(result.freshWater.tankLiters, 0)} L (
+                  {fmt(result.freshWater.tankM3, 2)} m³)
+                </ResultValue>
+              }
+            />
+          </ParameterSection>
+
+          {result.wastewater.tanks.map((tank) => (
+            <WastewaterTankPanel
+              key={tank.id}
+              tank={tank}
+              personsOnBoard={result.wastewater.personsOnBoard}
+              holdingDays={result.sewageHolding.days}
+            />
+          ))}
+
+          <ParameterSection title="Wastewater — combined total" tone={4}>
+            <p className="border-b border-[var(--card-border)] px-0 py-3 text-xs leading-relaxed text-[var(--muted)]">
+              Sum of the two separate holding tanks above — not a third tank.
+            </p>
+            <ParameterField
+              name="Wastewater total"
+              description="Black-water tank + gray-water tank — daily generation."
+              value={
+                <ResultValue>
+                  {fmt(result.wastewater.totalDailyLiters, 0)} L/day (
+                  {fmt(result.wastewater.totalDailyM3, 2)} m³/day)
+                </ResultValue>
+              }
+            />
+            <ParameterField
+              name="Holding total"
+              description="Black-water tank + gray-water tank — holding capacity."
+              value={
+                <ResultValue>
+                  {fmt(result.wastewater.totalHoldingLiters, 0)} L (
+                  {fmt(result.wastewater.totalHoldingM3, 2)} m³)
+                </ResultValue>
+              }
+            />
+          </ParameterSection>
+
+          <ParameterSection title="Solid waste — stowage" tone={7}>
+            <p className="border-b border-[var(--card-border)] px-0 py-3 text-xs leading-relaxed text-[var(--muted)]">
+              Reference rates (kg/person/day) × persons on board. Stowage volume = mass ÷ bulk
+              density{result.solidWaste.withCompactor ? " (with compactor)" : ""}.
+              {result.solidWaste.incinerator
+                ? ` Incinerator: ${INCINERATOR_CATEGORY_LABELS} volume × 0.6.`
+                : ""}
+            </p>
+            <ParameterField
+              name="Endurance basis"
+              description={
+                result.solidWaste.period.source === "endurance"
+                  ? "From Endurance — solid-waste stowage period."
+                  : "From Range ÷ V_s (Endurance not set) — solid-waste stowage period."
+              }
+              value={
+                <ResultValue>
+                  {fmtDuration(result.solidWaste.period.days, result.solidWaste.period.hours)}
+                </ResultValue>
+              }
+            />
+            {result.solidWaste.categories.map((row) => (
+              <div
+                key={row.category}
+                className="border-b border-[var(--card-border)] py-4 last:border-b-0"
+              >
+                <ParameterField
+                  name={row.label}
+                  description={`${fmt(row.rateKgPerPersonDay, 1)} kg/person/day × ${result.solidWaste.personsOnBoard} persons`}
+                  value={
+                    <ResultValue>
+                      {fmt(row.dailyMassKg, 1)} kg/day · {fmt(row.dailyVolumeM3, 1)} m³/day
+                    </ResultValue>
+                  }
+                />
+                <ParameterField
+                  name={`${row.label} — stowage`}
+                  description={`Mass and volume over endurance period (${fmt(result.solidWaste.period.days, 1)} days)`}
+                  value={
+                    <ResultValue>
+                      {fmt(row.voyageMassKg, 1)} kg · {fmt(row.voyageVolumeM3, 1)} m³
+                    </ResultValue>
+                  }
+                />
+              </div>
+            ))}
           </ParameterSection>
 
           <ParameterSection title="Total fuel oil — by fuel type" tone={6}>
@@ -567,7 +1088,8 @@ export function TankCapacitiesCalculator() {
             ))}
           </ParameterSection>
         </div>
-      )}
+        )}
+      </CalculatorPhase>
     </ToolLayout>
   );
 }
