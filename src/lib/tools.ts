@@ -31,6 +31,14 @@ export const tools: Tool[] = [
     category: "Mechanical",
   },
   {
+    id: "pump-capacities",
+    title: "Pump Capacities",
+    description:
+      "Bilge and fire-fighting pump capacities per Bureau Veritas NR467 (Pt C, Ch 1 & Ch 4).",
+    href: "/pump-capacities",
+    category: "Mechanical",
+  },
+  {
     id: "example-calc",
     title: "Example Calculator",
     description: "Template page for new tools. Copy this to build your own calculator.",
