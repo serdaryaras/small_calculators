@@ -7,8 +7,10 @@ import { exportEediReportPdf } from "@/lib/eedi/export-pdf";
 
 export const REPORT_ROW_STYLES: Record<ReportRowStatus, string> = {
   input: "bg-[var(--card)]",
+  preview: "bg-blue-50/60 dark:bg-blue-950/25",
   result: "bg-[var(--background)]",
   neutral: "bg-transparent",
+  section: "bg-slate-100 font-semibold dark:bg-slate-800/60",
   pass: "bg-green-100 dark:bg-green-950/80 border-l-4 border-l-green-600",
   fail: "bg-red-100 dark:bg-red-950/80 border-l-4 border-l-red-600",
 };
@@ -28,6 +30,36 @@ export function complianceBannerClass(pass: boolean | null): string {
   if (pass === true) return BANNER_STYLES.pass;
   if (pass === false) return BANNER_STYLES.fail;
   return BANNER_STYLES.na;
+}
+
+function PhaseTable({ rows }: { rows: EediReportData["phases"][number]["rows"] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-[var(--card-border)] text-left text-xs uppercase text-[var(--muted)]">
+            <th className="py-2 pr-4 font-medium">Name</th>
+            <th className="py-2 pr-4 font-medium">Value</th>
+            <th className="py-2 font-medium">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr
+              key={`${r.name}-${i}`}
+              className={`border-b border-[var(--card-border)]/50 ${REPORT_ROW_STYLES[r.status]}`}
+            >
+              <td className="py-2.5 pr-4 align-top font-medium">{r.name}</td>
+              <td className="py-2.5 pr-4 align-top tabular-nums">{r.value}</td>
+              <td className="py-2.5 align-top text-xs text-[var(--muted)]">
+                {r.description}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export function EediReport({ data, id = "eedi-report" }: Props) {
@@ -81,30 +113,21 @@ export function EediReport({ data, id = "eedi-report" }: Props) {
 
       <p className="mx-4 mt-3 text-xs text-[var(--muted)]">{data.phaseNote}</p>
 
-      <div className="overflow-x-auto p-4">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-[var(--card-border)] text-left text-xs uppercase text-[var(--muted)]">
-              <th className="py-2 pr-4 font-medium">Name</th>
-              <th className="py-2 pr-4 font-medium">Value</th>
-              <th className="py-2 font-medium">Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map((r, i) => (
-              <tr
-                key={`${r.name}-${i}`}
-                className={`border-b border-[var(--card-border)]/50 ${REPORT_ROW_STYLES[r.status]}`}
-              >
-                <td className="py-2.5 pr-4 align-top font-medium">{r.name}</td>
-                <td className="py-2.5 pr-4 align-top tabular-nums">{r.value}</td>
-                <td className="py-2.5 align-top text-xs text-[var(--muted)]">
-                  {r.description}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="space-y-0 p-4">
+        {data.phases.map((phase, index) => (
+          <section
+            key={phase.id}
+            className={`calculator-phase ${index > 0 ? "" : "!mt-0 !border-t-0 !pt-0"}`}
+          >
+            <header className="calculator-phase__header">
+              <h2 className="calculator-phase__title">{phase.title}</h2>
+              <p className="calculator-phase__description">{phase.description}</p>
+            </header>
+            <div className="calculator-phase__body">
+              <PhaseTable rows={phase.rows} />
+            </div>
+          </section>
+        ))}
       </div>
 
       <p className="border-t border-[var(--card-border)] px-4 py-3 text-xs text-[var(--muted)] print:text-gray-600">

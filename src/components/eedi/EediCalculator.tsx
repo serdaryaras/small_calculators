@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  CalculatorPhase,
   ParameterCheckbox,
   ParameterField,
   ParameterNumberInput,
@@ -216,6 +217,14 @@ export function EediCalculator() {
     ],
   );
 
+  const previewCalc = useMemo(() => {
+    try {
+      return calculateEediFromForm(formState);
+    } catch {
+      return null;
+    }
+  }, [formState]);
+
   const reportData = useMemo(() => {
     if (!result || !compliance) return null;
     return buildEediReport(formState, result, compliance, shipName);
@@ -270,11 +279,15 @@ export function EediCalculator() {
         automatically.
       </div>
 
-      <p className="mb-4 text-sm text-[var(--muted)]">
-        Each input follows: <strong>parameter name</strong> · <strong>value</strong> ·{" "}
+      <p className="mb-2 text-sm text-[var(--muted)]">
+        Each field follows: <strong>parameter name</strong> · <strong>value</strong> ·{" "}
         <strong>description</strong>.
       </p>
 
+      <CalculatorPhase
+        title="Input"
+        description="General, Reg. 24, correction factors and propulsion / power generation."
+      >
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
           <ParameterSection title="General" tone={0}>
@@ -586,60 +599,210 @@ export function EediCalculator() {
           </ParameterSection>
         </div>
       </div>
+      </CalculatorPhase>
 
-      <div className="mt-8">
-        <button
-          type="button"
-          onClick={handleCalculate}
-          disabled={calculating}
-          className="rounded-lg bg-[var(--accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
-        >
-          {calculating ? "Calculating…" : "Calculate EEDI"}
-        </button>
-      </div>
+      <CalculatorPhase
+        title="Preview"
+        description="Live attained EEDI and Phase 3 compliance estimate — updates as you type."
+      >
+        {!previewCalc ? (
+          <p className="text-sm text-[var(--muted)]">
+            Complete valid inputs to see attained EEDI and required EEDI preview.
+          </p>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-2">
+            <ParameterSection title="Formula inputs" tone={5}>
+              <ParameterField
+                name="Capacity"
+                description="Used in attained EEDI denominator."
+                value={
+                  <ResultValue>
+                    {formState.capacityT.toLocaleString("en-US")} t
+                  </ResultValue>
+                }
+              />
+              <ParameterField
+                name="V_ref"
+                description="Reference speed (kn)."
+                value={<ResultValue>{formState.vRef} kn</ResultValue>}
+              />
+              <ParameterField
+                name="f_i × f_c × f_l × f_w"
+                description="Capacity correction factors in denominator."
+                value={
+                  <ResultValue>
+                    {(formState.fi * formState.fc * formState.fl * formState.fw).toFixed(4)}
+                  </ResultValue>
+                }
+              />
+              <ParameterField
+                name="Π f_j"
+                description="Product of individual f_j factors."
+                value={<ResultValue>{formState.fjProd}</ResultValue>}
+              />
+              <ParameterField
+                name="Π f_eff"
+                description="Innovative energy-efficiency factor product."
+                value={<ResultValue>{formState.feff}</ResultValue>}
+              />
+              <ParameterField
+                name="Σ P_ME @ 75% MCR"
+                description="Sum of main-engine powers (kW)."
+                value={
+                  <ResultValue>
+                    {previewCalc.attained.pMeItemsKw.reduce((a, b) => a + b, 0).toFixed(1)} kW
+                  </ResultValue>
+                }
+              />
+              <ParameterField
+                name="P_AE (used)"
+                description="Auxiliary power in formula (kW)."
+                value={
+                  <ResultValue>
+                    {previewCalc.attained.pAeKw.toLocaleString("en-US", {
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    kW
+                  </ResultValue>
+                }
+              />
+            </ParameterSection>
 
-      {error && (
-        <div className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
-          <p className="font-medium">Cannot calculate — fix the following:</p>
-          <ul className="mt-2 list-inside list-disc space-y-1">
-            {error.split("\n").map((line, i) => (
-              <li key={i}>{line}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+            <div className="space-y-6">
+              <ParameterSection title="Attained EEDI" tone={4}>
+                <ParameterField
+                  name="Attained EEDI"
+                  description="MEPC.308 §2.1 — live estimate."
+                  value={
+                    <ResultValue>
+                      {previewCalc.attained.attainedEedi.toFixed(3)} gCO₂/t·nm
+                    </ResultValue>
+                  }
+                />
+                <ParameterField
+                  name="Numerator"
+                  description="g CO₂/h (with Πf_j × Πf_eff)."
+                  value={
+                    <ResultValue>
+                      {previewCalc.attained.numeratorGco2PerH.toExponential(4)}
+                    </ResultValue>
+                  }
+                />
+                <ParameterField
+                  name="Denominator"
+                  description="f_i × f_c × f_l × Capacity × V_ref × f_w."
+                  value={
+                    <ResultValue>
+                      {previewCalc.attained.denominatorTNmPerH.toExponential(4)}
+                    </ResultValue>
+                  }
+                />
+              </ParameterSection>
 
-      {warnings.length > 0 && (
-        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-          {warnings.map((w, i) => (
-            <p key={i}>{w}</p>
-          ))}
-        </div>
-      )}
-
-      {result && compliance && (
-        <div ref={resultsRef} className="mt-8 space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div
-              className={`flex-1 rounded-lg border px-4 py-3 text-center text-base font-bold ${complianceBannerClass(compliance.complies)}`}
-            >
-              {compliance.complies === true
-                ? "PASS — Attained EEDI meets Phase 3 required limit"
-                : compliance.complies === false
-                  ? "FAIL — Attained EEDI exceeds Phase 3 required limit"
-                  : "Required EEDI — not applicable for this size / phase"}
+              <section className="section-card section-card--tone-7 overflow-hidden">
+                <h3 className="section-card__header">Required EEDI (Phase 3)</h3>
+                {previewCalc.compliance.referenceLineEedi != null && (
+                  <ComplianceRow
+                    name="Reference line EEDI"
+                    description="Regulation 24 Table 2 reference line (gCO₂/t·nm)."
+                    value={`${previewCalc.compliance.referenceLineEedi.toFixed(3)} gCO₂/t·nm`}
+                  />
+                )}
+                {previewCalc.compliance.reductionPercent != null && (
+                  <ComplianceRow
+                    name="Reduction factor X"
+                    description="Phase 3 (Jan 2025) reduction percentage."
+                    value={`${previewCalc.compliance.reductionPercent.toFixed(2)} %`}
+                  />
+                )}
+                {previewCalc.compliance.requiredEedi != null ? (
+                  <>
+                    <ComplianceRow
+                      name="Required EEDI"
+                      description="Maximum permitted attained value."
+                      value={`${previewCalc.compliance.requiredEedi.toFixed(3)} gCO₂/t·nm`}
+                    />
+                    <ComplianceRow
+                      name="Margin"
+                      description="Required − attained (positive = below limit)."
+                      value={`${(previewCalc.compliance.margin ?? 0) >= 0 ? "+" : ""}${(previewCalc.compliance.margin ?? 0).toFixed(3)} gCO₂/t·nm`}
+                      status={previewCalc.compliance.complies ? "pass" : "fail"}
+                    />
+                  </>
+                ) : (
+                  <ComplianceRow
+                    name="Required EEDI"
+                    description="No mandatory required EEDI for this size band."
+                    value="n/a"
+                  />
+                )}
+              </section>
             </div>
-            <button
-              type="button"
-              onClick={handleDownloadPdf}
-              disabled={!reportData || exportingPdf}
-              className="rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-            >
-              {exportingPdf ? "PDF…" : "Download PDF"}
-            </button>
+          </div>
+        )}
+      </CalculatorPhase>
+
+      <CalculatorPhase
+        title="Results"
+        description="Confirmed calculation after Calculate EEDI."
+      >
+        <div className="no-print flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleCalculate}
+            disabled={calculating}
+            className="rounded-lg bg-[var(--accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+          >
+            {calculating ? "Calculating…" : "Calculate EEDI"}
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={!reportData || exportingPdf}
+            className="rounded-lg bg-[var(--accent)] px-6 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {exportingPdf ? "PDF…" : "Download PDF"}
+          </button>
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+            <p className="font-medium">Cannot calculate — fix the following:</p>
+            <ul className="mt-2 list-inside list-disc space-y-1">
+              {error.split("\n").map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {warnings.length > 0 && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            {warnings.map((w, i) => (
+              <p key={i}>{w}</p>
+            ))}
+          </div>
+        )}
+
+        {!result && !error && (
+          <p className="text-sm text-[var(--muted)]">
+            Press <strong>Calculate EEDI</strong> to generate results.
+          </p>
+        )}
+
+        {result && compliance && (
+        <div ref={resultsRef} className="space-y-6">
+          <div
+            className={`rounded-lg border px-4 py-3 text-center text-base font-bold ${complianceBannerClass(compliance.complies)}`}
+          >
+            {compliance.complies === true
+              ? "PASS — Attained EEDI meets Phase 3 required limit"
+              : compliance.complies === false
+                ? "FAIL — Attained EEDI exceeds Phase 3 required limit"
+                : "Required EEDI — not applicable for this size / phase"}
           </div>
 
-          <ParameterSection title={`Results — ${shipName || "Project"}`} tone={5}>
+          <ParameterSection title={`Attained EEDI — ${shipName || "Project"}`} tone={5}>
             <ParameterField
               name="Attained EEDI"
               description="Energy Efficiency Design Index from §2.1 (g CO₂ per tonne-nautical mile)."
@@ -750,7 +913,8 @@ export function EediCalculator() {
             ))}
           </section>
         </div>
-      )}
+        )}
+      </CalculatorPhase>
     </ToolLayout>
   );
 }
