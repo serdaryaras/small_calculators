@@ -36,10 +36,6 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-function round0(n: number): number {
-  return Math.round(n);
-}
-
 export { bilgeMainDiameterMm, bilgeBranchDiameterMm } from "./bilge-extended";
 
 /** Passenger-ship bilge pump capacity reference for cargo fire rule (m³/h). */
@@ -129,7 +125,7 @@ export function computeBilgeRequirements(input: PumpCapacitiesInput): BilgeRequi
 
   return {
     bilgeMode: "general",
-    bilgeMainDiameterMm: round0(d),
+    bilgeMainDiameterMm: round1(d),
     capacityPerPumpM3H,
     minPumpCount,
     totalRequiredM3H: round1(minPumpCount * capacityPerPumpM3H),

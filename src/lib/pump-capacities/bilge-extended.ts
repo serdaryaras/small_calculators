@@ -22,23 +22,13 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-function round0(n: number): number {
-  return Math.round(n);
-}
-
-/** Nearest 5 mm — common class rounding for bilge pipe diameters. */
-export function roundBilgePipeDiameterMm(d: number): number {
-  return Math.round(d / 5) * 5;
-}
-
-/** BV NR467 Pt C, Ch 1, Sec 10 [6.8.1] — bilge main internal diameter (mm). */
+/** BV NR467 Pt C, Ch 1, Sec 10 [6.8.1] — bilge main internal diameter (mm), formula value (no 5 mm rounding). */
 export function bilgeMainDiameterMm(L: number, B: number, D: number): number {
   const raw = BILGE_MAIN_D_TERM + BILGE_MAIN_D_COEFF * Math.sqrt(L * (B + D));
-  const rounded = roundBilgePipeDiameterMm(raw);
-  return Math.max(BILGE_MAIN_MIN_MM, rounded);
+  return Math.max(BILGE_MAIN_MIN_MM, raw);
 }
 
-/** BV [6.8.3] — branch bilge suction internal diameter (mm). */
+/** BV [6.8.3] — branch bilge suction internal diameter (mm), formula value (no 5 mm rounding). */
 export function bilgeBranchDiameterMm(
   compartmentLengthM: number,
   breadthM: number,
@@ -47,23 +37,22 @@ export function bilgeBranchDiameterMm(
   const raw =
     BILGE_BRANCH_D_TERM +
     BILGE_BRANCH_D_COEFF * Math.sqrt(compartmentLengthM * (breadthM + depthM));
-  const rounded = roundBilgePipeDiameterMm(raw);
   return Math.min(
     BILGE_BRANCH_MAX_MM,
-    Math.max(BILGE_BRANCH_MIN_MM, rounded),
+    Math.max(BILGE_BRANCH_MIN_MM, raw),
   );
 }
 
-/** Tanker / machinery-only bilge main — Pt C [6.8.9] · Pt D, Ch 7, Sec 4 (same branch formula, C = machinery length). */
+/** Tanker / machinery-only bilge main — Pt C [6.8.9] · Pt D, Ch 7, Sec 4 (formula value, no 5 mm rounding). */
 export function tankerMachineryBilgeMainMm(
   machineryLengthM: number,
   breadthM: number,
   depthM: number,
 ): number {
-  const raw =
+  return (
     BILGE_BRANCH_D_TERM +
-    BILGE_BRANCH_D_COEFF * Math.sqrt(machineryLengthM * (breadthM + depthM));
-  return roundBilgePipeDiameterMm(raw);
+    BILGE_BRANCH_D_COEFF * Math.sqrt(machineryLengthM * (breadthM + depthM))
+  );
 }
 
 export function bilgePumpCapacityM3H(
@@ -126,7 +115,7 @@ function computeSingleBranch(
     kind: compartment.kind,
     compartmentLengthM: compartment.lengthM,
     breadthUsedM,
-    diameterMm,
+    diameterMm: round1(diameterMm),
     formulaNote: `d₁ = 25 + 2.16√(L₁·(B+D)) — L₁ = ${compartment.lengthM} m; ${breadthNote}`,
     ruleRef: "BV NR467 Pt C, Ch 1, Sec 10 [6.8.3]",
   };
@@ -149,9 +138,7 @@ export function computeTankerMachineryBilge(
     input.breadthM,
     input.depthM,
   );
-  const minMainFromBranchMm = roundBilgePipeDiameterMm(
-    Math.sqrt(2) * branchDiameterMm,
-  );
+  const minMainFromBranchMm = Math.sqrt(2) * branchDiameterMm;
   const bilgeMainDiameterMm = Math.max(
     formulaDiameterMm,
     minMainFromBranchMm,
@@ -163,10 +150,10 @@ export function computeTankerMachineryBilge(
 
   return {
     machineryLengthM,
-    branchDiameterMm,
-    formulaDiameterMm,
-    minMainFromBranchMm,
-    bilgeMainDiameterMm,
+    branchDiameterMm: round1(branchDiameterMm),
+    formulaDiameterMm: round1(formulaDiameterMm),
+    minMainFromBranchMm: round1(minMainFromBranchMm),
+    bilgeMainDiameterMm: round1(bilgeMainDiameterMm),
     capacityPerPumpM3H,
     waterVelocityMs: useShortFormula ? 1.22 : 2,
     ruleRef:
@@ -204,8 +191,8 @@ export function computeDoubleHullCargoBilge(
 
   return {
     holdBreadthM,
-    bilgeMainDiameterMm: holdBilgeMainDiameterMm,
-    standardBilgeMainDiameterMm,
+    bilgeMainDiameterMm: round1(holdBilgeMainDiameterMm),
+    standardBilgeMainDiameterMm: round1(standardBilgeMainDiameterMm),
     ruleRef: "BV NR467 Pt C, Ch 1, Sec 10 [6.8.1] Note 1 · [6.8.3] b)",
     notes: [
       `Side ballast double hull — bilge main may use hold breadth amidships B_hold = ${holdBreadthM} m instead of ship breadth B = ${input.breadthM} m.`,
