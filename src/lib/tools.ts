@@ -39,6 +39,13 @@ export const tools: Tool[] = [
     category: "Mechanical",
   },
   {
+    id: "pipe-flow",
+    title: "Pipe Flow (Q = A·V)",
+    description: "Flow rate, pipe internal diameter and velocity — solve any one from the other two.",
+    href: "/pipe-flow",
+    category: "Mechanical",
+  },
+  {
     id: "example-calc",
     title: "Example Calculator",
     description: "Template page for new tools. Copy this to build your own calculator.",
