@@ -51,6 +51,14 @@ export function collectTankParameters(form: TankCapacitiesFormState): ParameterR
     rec(P.vacuumToilet, form.ship.vacuumToilet ? "Yes" : "No"),
     rec(P.withCompactor, form.ship.withCompactor ? "Yes" : "No"),
     rec(P.solidWasteIncinerator, form.ship.solidWasteIncinerator ? "Yes" : "No"),
+    rec(
+      P.sludgeK1Mode,
+      form.ship.sludgeK1Mode === "hfo_purified"
+        ? "HFO purified — K₁ = 0.015"
+        : form.ship.sludgeK1Mode === "diesel_or_no_purification"
+          ? "MDO / no purification — K₁ = 0.005"
+          : "Auto",
+    ),
     rec(P.nMainEngines, form.mainEngines.length),
   ];
 

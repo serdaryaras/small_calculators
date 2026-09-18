@@ -19,7 +19,12 @@ export const TANK_PARAMS = {
   nonDischargePeriod: {
     name: "Non-discharge period",
     description:
-      "Period without sewage discharge to sea (days). Holding-tank capacity = daily wastewater × this period.",
+      "Period without sewage discharge to sea (days). Holding-tank capacity = daily wastewater × max(this, 7 days).",
+  },
+  sludgeK1Mode: {
+    name: "Sludge K₁ mode",
+    description:
+      "MARPOL Annex I Reg.12 — auto from main-engine HFO, or force K₁ = 0.015 / 0.005. V₁ = K₁ · C · D.",
   },
   personsOnBoard: {
     name: "Persons on board",
@@ -38,12 +43,12 @@ export const TANK_PARAMS = {
   withCompactor: {
     name: "Waste compactor",
     description:
-      "When in use, higher bulk density (kg/m³) applies — lower stowage volume for plastic and glass.",
+      "When in use, higher bulk density (kg/m³) applies — lower stowage volume for plastic, paper and glass/tins.",
   },
   solidWasteIncinerator: {
     name: "Solid-waste incinerator",
     description:
-      "When in use, plastic, glass and food stowage volume is multiplied by 0.6 (40% reduction). Mass unchanged.",
+      "When in use, plastic, paper and food stowage volume is multiplied by 0.6 (40% reduction). Glass/tins unchanged.",
   },
   nMainEngines: {
     name: "Number of main engines",

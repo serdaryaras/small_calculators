@@ -93,10 +93,46 @@ function buildPreviewRows(result: TankCapacitiesResult): ReportRow[] {
     row(
       "Sewage holding",
       fmtDuration(result.sewageHolding.days, result.sewageHolding.hours),
-      "From Non-discharge period — holding-tank capacity",
+      `Non-discharge period (min. 7 days) — source: ${result.sewageHolding.source}`,
+      "preview",
+    ),
+    row(
+      "Sludge period D",
+      fmtDuration(result.sludgePeriod.days, result.sludgePeriod.hours),
+      `Autonomy → voyage → default 30 d — source: ${result.sludgePeriod.source}`,
       "preview",
     ),
   );
+
+  rows.push(section("Fuel · Sludge · Oily bilge", "Tanklarv2 / MARPOL / Circ.642."));
+  rows.push(
+    row(
+      "Daily fuel C",
+      `${fmt(result.dailyFuelM3, 2)} m³/day`,
+      "24 h consumption of all fuel consumers — sludge formula",
+      "preview",
+    ),
+  );
+  if (result.sludge) {
+    rows.push(
+      row(
+        "Sludge tank V₁",
+        `${fmt(result.sludge.volumeM3, 2)} m³`,
+        `${result.sludge.formula} — K₁ = ${result.sludge.k1}, C = ${fmt(result.sludge.C, 2)} m³/d, D = ${fmt(result.sludge.D, 1)} d · ${result.sludge.rule}`,
+        "preview",
+      ),
+    );
+  }
+  if (result.oilyBilge) {
+    rows.push(
+      row(
+        "Oily bilge holding",
+        `${fmt(result.oilyBilge.volumeM3, 2)} m³`,
+        `${result.oilyBilge.formula} — P = ${fmt(result.oilyBilge.P, 0)} kW (${result.oilyBilge.band}) · ${result.oilyBilge.rule}`,
+        "preview",
+      ),
+    );
+  }
 
   rows.push(section("Wastewater & FW"));
   for (const tank of result.wastewater.tanks) {
@@ -219,10 +255,36 @@ function buildResultsRows(
     row(
       "Sewage holding period",
       fmtDuration(result.sewageHolding.days, result.sewageHolding.hours),
-      "From Non-discharge period — holding-tank sizing period",
+      `Non-discharge (min. 7 d) — ${result.sewageHolding.source}`,
+      "result",
+    ),
+    row(
+      "Daily fuel C",
+      `${fmt(result.dailyFuelM3, 2)} m³/day`,
+      "For sludge V₁ = K₁ · C · D",
       "result",
     ),
   );
+  if (result.sludge) {
+    rows.push(
+      row(
+        "Sludge tank V₁",
+        `${fmt(result.sludge.volumeM3, 2)} m³`,
+        `${result.sludge.formula} · K₁=${result.sludge.k1} · ${result.sludge.rule}`,
+        "result",
+      ),
+    );
+  }
+  if (result.oilyBilge) {
+    rows.push(
+      row(
+        "Oily bilge holding",
+        `${fmt(result.oilyBilge.volumeM3, 2)} m³`,
+        `${result.oilyBilge.formula} · P=${fmt(result.oilyBilge.P, 0)} kW · ${result.oilyBilge.rule}`,
+        "result",
+      ),
+    );
+  }
 
   rows.push(section("Fresh water"));
   rows.push(

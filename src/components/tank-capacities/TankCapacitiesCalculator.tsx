@@ -20,11 +20,13 @@ import { TANK_PARAMS as P } from "@/lib/tank-capacities/parameters";
 import type {
   BoilerConsumer,
   EngineConsumer,
+  SludgeK1Mode,
   TankCapacitiesResult,
   WastewaterShipType,
   WastewaterTankId,
   WastewaterTankResult,
 } from "@/lib/tank-capacities/types";
+import { SLUDGE_K1_OPTIONS } from "@/lib/tank-capacities/sludge-bilge";
 import {
   computeWastewater,
   WASTEWATER_SHIP_TYPES,
@@ -212,6 +214,7 @@ export function TankCapacitiesCalculator() {
   const [vacuumToilet, setVacuumToilet] = useState(false);
   const [withCompactor, setWithCompactor] = useState(false);
   const [solidWasteIncinerator, setSolidWasteIncinerator] = useState(false);
+  const [sludgeK1Mode, setSludgeK1Mode] = useState<SludgeK1Mode>("auto");
 
   const [nMe, setNMe] = useState(1);
   const [mainEngines, setMainEngines] = useState<EngineConsumer[]>([{ ...defaultMe }]);
@@ -325,6 +328,7 @@ export function TankCapacitiesCalculator() {
         vacuumToilet,
         withCompactor,
         solidWasteIncinerator,
+        sludgeK1Mode,
       },
       mainEngines,
       auxiliaryEngines,
@@ -343,6 +347,7 @@ export function TankCapacitiesCalculator() {
       vacuumToilet,
       withCompactor,
       solidWasteIncinerator,
+      sludgeK1Mode,
       mainEngines,
       auxiliaryEngines,
       boilers,
@@ -350,6 +355,15 @@ export function TankCapacitiesCalculator() {
       serviceTankVolume,
     ],
   );
+
+  const previewCalc = useMemo(() => {
+    try {
+      const { result } = calculateTankCapacitiesFromForm(formState);
+      return result;
+    } catch {
+      return null;
+    }
+  }, [formState]);
 
   const reportData = useMemo(() => {
     if (!result) return null;
@@ -391,7 +405,7 @@ export function TankCapacitiesCalculator() {
   return (
     <ToolLayout
       title="Tank Capacities"
-      description="Fuel tank capacities and waste holding volumes for ship design."
+      description="Fuel tank capacities, MARPOL sludge & oily bilge holding, and waste volumes for ship design."
     >
       <p className="mb-2 text-sm text-[var(--muted)]">
         Each field follows: <strong>parameter name</strong> · <strong>value</strong> ·{" "}
@@ -479,6 +493,13 @@ export function TankCapacitiesCalculator() {
               description={P.solidWasteIncinerator.description}
               checked={solidWasteIncinerator}
               onChange={setSolidWasteIncinerator}
+            />
+            <ParameterSelect
+              name={P.sludgeK1Mode.name}
+              description={P.sludgeK1Mode.description}
+              value={sludgeK1Mode}
+              onChange={setSludgeK1Mode}
+              options={SLUDGE_K1_OPTIONS}
             />
           </ParameterSection>
 
@@ -715,14 +736,57 @@ export function TankCapacitiesCalculator() {
           />
           <ParameterField
             name="Sewage holding"
-            description="From Non-discharge period — holding-tank capacity."
+            description={
+              previewCalc?.sewageHolding
+                ? `From Non-discharge period (min. 7 days) — source: ${previewCalc.sewageHolding.source}`
+                : "From Non-discharge period — holding-tank capacity (min. 7 days)."
+            }
             value={
               <ResultValue>
-                {fmtDuration(previewSewage.days, previewSewage.hours)}
+                {fmtDuration(
+                  (previewCalc?.sewageHolding ?? previewSewage).days,
+                  (previewCalc?.sewageHolding ?? previewSewage).hours,
+                )}
               </ResultValue>
             }
           />
         </ParameterSection>
+
+        {previewCalc && (
+          <ParameterSection title="Fuel · Sludge · Oily bilge" tone={2}>
+            <ParameterField
+              name="Daily fuel C"
+              description="Combined 24 h fuel consumption — basis for sludge V₁."
+              value={
+                <ResultValue>
+                  {fmt(previewCalc.dailyFuelM3, 2)} m³/day
+                </ResultValue>
+              }
+            />
+            {previewCalc.sludge && (
+              <ParameterField
+                name="Sludge tank V₁"
+                description={`${previewCalc.sludge.formula} · K₁=${previewCalc.sludge.k1} · C=${fmt(previewCalc.sludge.C, 2)} m³/day · D=${fmt(previewCalc.sludge.D, 1)} days · ${previewCalc.sludge.rule}`}
+                value={
+                  <ResultValue>
+                    {fmt(previewCalc.sludge.volumeM3, 2)} m³
+                  </ResultValue>
+                }
+              />
+            )}
+            {previewCalc.oilyBilge && (
+              <ParameterField
+                name="Oily bilge holding"
+                description={`${previewCalc.oilyBilge.formula} · P=${fmt(previewCalc.oilyBilge.P, 0)} kW (${previewCalc.oilyBilge.band}) · ${previewCalc.oilyBilge.rule}`}
+                value={
+                  <ResultValue>
+                    {fmt(previewCalc.oilyBilge.volumeM3, 2)} m³
+                  </ResultValue>
+                }
+              />
+            )}
+          </ParameterSection>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <ParameterSection title="Wastewater & FW" tone={4}>
@@ -899,13 +963,47 @@ export function TankCapacitiesCalculator() {
             />
             <ParameterField
               name="Sewage holding period"
-              description="From Non-discharge period — holding-tank sizing period."
+              description={`Non-discharge period (min. 7 days) — source: ${result.sewageHolding.source}`}
               value={
                 <ResultValue>
                   {fmtDuration(result.sewageHolding.days, result.sewageHolding.hours)}
                 </ResultValue>
               }
             />
+          </ParameterSection>
+
+          <ParameterSection title="Sludge & oily bilge" tone={2}>
+            <ParameterField
+              name="Daily fuel C"
+              description="Combined 24 h fuel consumption — basis for sludge V₁."
+              value={
+                <ResultValue>
+                  {fmt(result.dailyFuelM3, 2)} m³/day
+                </ResultValue>
+              }
+            />
+            {result.sludge && (
+              <ParameterField
+                name="Sludge tank V₁"
+                description={`${result.sludge.formula} · K₁=${result.sludge.k1} · C=${fmt(result.sludge.C, 2)} m³/day · D=${fmt(result.sludge.D, 1)} days · ${result.sludge.rule}`}
+                value={
+                  <ResultValue>
+                    {fmt(result.sludge.volumeM3, 2)} m³
+                  </ResultValue>
+                }
+              />
+            )}
+            {result.oilyBilge && (
+              <ParameterField
+                name="Oily bilge holding"
+                description={`${result.oilyBilge.formula} · P=${fmt(result.oilyBilge.P, 0)} kW (${result.oilyBilge.band}) · ${result.oilyBilge.rule}`}
+                value={
+                  <ResultValue>
+                    {fmt(result.oilyBilge.volumeM3, 2)} m³
+                  </ResultValue>
+                }
+              />
+            )}
           </ParameterSection>
 
           <ParameterSection title="Fresh water" tone={3}>

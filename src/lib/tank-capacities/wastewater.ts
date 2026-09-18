@@ -1,4 +1,7 @@
+import { MIN_WASTEWATER_HOLDING_DAYS } from "./constants";
 import type {
+  PeriodBasis,
+  PeriodSource,
   WastewaterResult,
   WastewaterShipType,
   WastewaterStream,
@@ -101,18 +104,37 @@ export function wastewaterTankRateDescription(
   return `${parts} L/person/day × ${personsOnBoard} persons`;
 }
 
+/** Resolve holding days — never less than MIN_WASTEWATER_HOLDING_DAYS. */
+export function resolveWastewaterHoldingDays(nonDischargeDays: number): PeriodBasis {
+  const ndp = nonDischargeDays > 0 ? nonDischargeDays : 0;
+  let days: number;
+  let source: PeriodSource;
+  if (ndp >= MIN_WASTEWATER_HOLDING_DAYS) {
+    days = ndp;
+    source = "non_discharge";
+  } else if (ndp > 0) {
+    days = MIN_WASTEWATER_HOLDING_DAYS;
+    source = "non_discharge_min_7";
+  } else {
+    days = MIN_WASTEWATER_HOLDING_DAYS;
+    source = "minimum_7";
+  }
+  return { days, hours: days * 24, source };
+}
+
 export function computeWastewater(
   shipType: WastewaterShipType,
   vacuumToilet: boolean,
   personsOnBoard: number,
   nonDischargeDays: number,
 ): WastewaterResult {
+  const holding = resolveWastewaterHoldingDays(nonDischargeDays);
   const rates = wastewaterRatesLPerPersonDay(shipType, vacuumToilet);
 
   const streams = WASTEWATER_STREAM_ORDER.map((stream) => {
     const rateLPerPersonDay = rates[stream];
     const dailyLiters = rateLPerPersonDay * personsOnBoard;
-    const holdingLiters = dailyLiters * nonDischargeDays;
+    const holdingLiters = dailyLiters * holding.days;
     return {
       stream,
       label: WASTEWATER_STREAM_LABELS[stream],

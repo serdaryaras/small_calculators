@@ -13,8 +13,19 @@ import type {
   TankCapacitiesResult,
   WastewaterResult,
 } from "./types";
+import {
+  computeOilyBilgeHolding,
+  computeSludgeTank,
+  dailyFuelConsumptionM3,
+  mainEngineRatingKw,
+  resolveSludgeK1,
+  resolveSludgePeriod,
+} from "./sludge-bilge";
 import { computeSolidWaste } from "./solid-waste";
-import { computeWastewater } from "./wastewater";
+import {
+  computeWastewater,
+  resolveWastewaterHoldingDays,
+} from "./wastewater";
 
 function engineFuelKg(powerKw: number, sfocGPerKwh: number, hours: number): number {
   return (powerKw * sfocGPerKwh * hours) / 1000;
@@ -61,10 +72,9 @@ export function resolveFwAutonomy(
   return { days, hours: days * 24, source };
 }
 
-/** Sewage / holding-tank period from non-discharge period. */
+/** Sewage / holding-tank period from non-discharge period (min. 7 days). */
 export function resolveSewageHolding(nonDischargePeriodDays: number): SewageHolding {
-  const days = nonDischargePeriodDays;
-  return { days, hours: days * 24 };
+  return resolveWastewaterHoldingDays(nonDischargePeriodDays);
 }
 
 /** Daily FW equals total daily wastewater; tank capacity = daily × FW autonomy (Endurance). */
@@ -201,6 +211,21 @@ export function calculateTankCapacities(
   const totalFuelMassKg = rangeFuelByType.reduce((s, r) => s + r.massKg, 0);
   const totalFuelVolumeM3 = rangeFuelByType.reduce((s, r) => s + r.volumeM3, 0);
 
+  const dailyFuelByType = accumulateRangeFuel(
+    24,
+    mainEngines,
+    auxiliaryEngines,
+    boilers,
+    input.fuelDensityKgM3,
+    defaultDensity,
+  );
+  const dailyFuelM3 = dailyFuelConsumptionM3(dailyFuelByType);
+  const sludgePeriod = resolveSludgePeriod(ship.enduranceDays, voyageDays);
+  const k1Info = resolveSludgeK1(ship.sludgeK1Mode, mainEngines);
+  const sludge = computeSludgeTank(dailyFuelM3, sludgePeriod.days, k1Info.k1);
+  const meRating = mainEngineRatingKw(mainEngines);
+  const oilyBilge = computeOilyBilgeHolding(meRating);
+
   const serviceTanks = serviceTankRequirements(
     mainEngines,
     auxiliaryEngines,
@@ -218,6 +243,11 @@ export function calculateTankCapacities(
     wastewater,
     freshWater,
     solidWaste,
+    dailyFuelM3,
+    mainEngineRatingKw: meRating,
+    sludgePeriod,
+    sludge,
+    oilyBilge,
     rangeFuelByType,
     totalFuelMassKg,
     totalFuelVolumeM3,

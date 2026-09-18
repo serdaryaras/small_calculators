@@ -17,7 +17,42 @@ export type WastewaterShipType = 1 | 2 | 3 | 4;
 
 export type WastewaterStream = "black" | "gray" | "laundry" | "galley";
 
-export type SolidWasteCategory = "plastics" | "glass_tins" | "food";
+export type SolidWasteCategory = "plastics" | "paper" | "glass_tins" | "food";
+
+export type SludgeK1Mode = "auto" | "hfo_purified" | "diesel_or_no_purification";
+
+export type PeriodSource =
+  | "autonomy"
+  | "endurance"
+  | "range_voyage"
+  | "non_discharge"
+  | "non_discharge_min_7"
+  | "minimum_7"
+  | "default_30"
+  | "rule";
+
+export type PeriodBasis = {
+  days: number;
+  hours: number;
+  source: PeriodSource;
+};
+
+export type SludgeTankResult = {
+  k1: number;
+  C: number;
+  D: number;
+  volumeM3: number;
+  rule: string;
+  formula: string;
+};
+
+export type OilyBilgeHolding = {
+  P: number;
+  volumeM3: number;
+  band: string;
+  formula: string;
+  rule: string;
+};
 
 export type SolidWasteCategoryResult = {
   category: SolidWasteCategory;
@@ -48,6 +83,8 @@ export type ShipParameters = {
   vacuumToilet: boolean;
   withCompactor: boolean;
   solidWasteIncinerator: boolean;
+  /** Sludge K₁ selection — auto from ME fuel, or manual. */
+  sludgeK1Mode: SludgeK1Mode;
 };
 
 export type WastewaterStreamResult = {
@@ -136,22 +173,26 @@ export type FreshWaterResult = {
   tankM3: number;
 };
 
-/** Time basis for sewage / holding-tank sizing (generation section to follow). */
-export type SewageHolding = {
-  days: number;
-  hours: number;
-};
+/** Time basis for sewage / holding-tank sizing (min. 7 days applied). */
+export type SewageHolding = PeriodBasis;
 
 export type TankCapacitiesResult = {
   voyageHours: number;
   voyageDays: number;
   /** FW tank autonomy — Endurance if set, otherwise Range ÷ V_s. */
   fwAutonomy: FwAutonomy;
-  /** Sewage holding period — Non-discharge period. */
+  /** Sewage holding period — Non-discharge period, min. 7 days. */
   sewageHolding: SewageHolding;
   wastewater: WastewaterResult;
   freshWater: FreshWaterResult;
   solidWaste: SolidWasteResult;
+  /** Daily fuel volume C (m³/day) for sludge formula. */
+  dailyFuelM3: number;
+  /** Main-engine rating P (kW) for oily bilge. */
+  mainEngineRatingKw: number;
+  sludgePeriod: PeriodBasis;
+  sludge: SludgeTankResult | null;
+  oilyBilge: OilyBilgeHolding | null;
   rangeFuelByType: FuelTypeBreakdown[];
   totalFuelMassKg: number;
   totalFuelVolumeM3: number;

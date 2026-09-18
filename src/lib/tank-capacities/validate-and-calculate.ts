@@ -1,6 +1,7 @@
-import { FUEL_LABELS, FUEL_TYPES, type FuelType } from "@/lib/eedi/constants";
+﻿import { FUEL_LABELS, FUEL_TYPES, type FuelType } from "@/lib/eedi/constants";
 import { calculateTankCapacities } from "./calculation";
 import { DEFAULT_FUEL_DENSITY_KG_M3, SERVICE_TANK_HOURS } from "./constants";
+import { oilyBilgeHeatingWarning } from "./sludge-bilge";
 import type {
   BoilerConsumer,
   EngineConsumer,
@@ -103,6 +104,17 @@ export function calculateTankCapacitiesFromForm(
   if (result.rangeFuelByType.length === 0) {
     throw new Error("No fuel consumption calculated — check equipment inputs.");
   }
+
+  if (!result.oilyBilge) {
+    warnings.push("Oily bilge holding needs a main-engine rating P (kW).");
+  }
+
+  const bilgeHeat = oilyBilgeHeatingWarning(
+    form.mainEngines,
+    form.fuelDensityKgM3,
+    DEFAULT_FUEL_DENSITY_KG_M3,
+  );
+  if (bilgeHeat) warnings.push(bilgeHeat);
 
   for (const st of result.serviceTanks) {
     if (st.meetsRequirement === false) {

@@ -7,41 +7,49 @@ import type {
 
 export type { SolidWasteCategory };
 
+/** Same category set as Tanklarv2 / BV CLEANSHIP-style table. */
 export const SOLID_WASTE_CATEGORY_ORDER: SolidWasteCategory[] = [
   "plastics",
+  "paper",
   "glass_tins",
   "food",
 ];
 
 export const SOLID_WASTE_LABELS: Record<SolidWasteCategory, string> = {
   plastics: "Plastic",
-  glass_tins: "Glass",
+  paper: "Paper / cardboard",
+  glass_tins: "Glass / tins",
   food: "Food",
 };
 
-/** Generation rates (kg/person/day) — reference table from Excel_Makro (paper excluded). */
+/** Generation rates (kg/person/day) — Tanklarv2 / BV CLEANSHIP. */
 export const DEFAULT_RATES_KG_PER_PD: Record<SolidWasteCategory, number> = {
   plastics: 0.1,
+  paper: 1.0,
   glass_tins: 1.0,
   food: 0.7,
 };
 
 export const BULK_DENSITY_NO_COMPACTOR_KG_M3: Record<SolidWasteCategory, number> = {
   plastics: 40,
+  paper: 40,
   glass_tins: 160,
   food: 300,
 };
 
 export const BULK_DENSITY_WITH_COMPACTOR_KG_M3: Record<SolidWasteCategory, number> = {
   plastics: 410,
+  paper: 410,
   glass_tins: 1600,
   food: 300,
 };
 
 export const INCINERATOR_VOLUME_REMAINING_FRACTION = 0.6;
+
+/** Incinerator reduces volume for plastics, paper and food only — not glass/tins. */
 export const INCINERATOR_CATEGORY_KEYS: SolidWasteCategory[] = [
   "plastics",
-  "glass_tins",
+  "paper",
   "food",
 ];
 
@@ -99,15 +107,17 @@ export function computeSolidWaste(
     voyageVolume = applyIncineratorVolumeFactor(voyageVolume);
   }
 
-  const categories: SolidWasteCategoryResult[] = SOLID_WASTE_CATEGORY_ORDER.map((category) => ({
-    category,
-    label: SOLID_WASTE_LABELS[category],
-    rateKgPerPersonDay: DEFAULT_RATES_KG_PER_PD[category],
-    dailyMassKg: dailyMass[category],
-    dailyVolumeM3: dailyVolume[category],
-    voyageMassKg: voyageMass[category],
-    voyageVolumeM3: voyageVolume[category],
-  }));
+  const categories: SolidWasteCategoryResult[] = SOLID_WASTE_CATEGORY_ORDER.map(
+    (category) => ({
+      category,
+      label: SOLID_WASTE_LABELS[category],
+      rateKgPerPersonDay: DEFAULT_RATES_KG_PER_PD[category],
+      dailyMassKg: dailyMass[category],
+      dailyVolumeM3: dailyVolume[category],
+      voyageMassKg: voyageMass[category],
+      voyageVolumeM3: voyageVolume[category],
+    }),
+  );
 
   return {
     personsOnBoard,

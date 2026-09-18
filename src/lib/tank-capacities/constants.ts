@@ -20,3 +20,18 @@ export const DEFAULT_FUEL_DENSITY_KG_M3: Record<FuelType, number> = {
 
 /** Minimum service-tank autonomy (hours). */
 export const SERVICE_TANK_HOURS = 8;
+
+/** Default sludge discharge interval when autonomy / voyage not available (days). */
+export const DEFAULT_SLUDGE_DAYS = 30;
+
+/** Minimum wastewater holding period (days) — Tanklarv2 / BV practice. */
+export const MIN_WASTEWATER_HOLDING_DAYS = 7;
+
+/** MARPOL Annex I Reg.12 · MEPC.1/Circ.867 — K₁ with HFO purification. */
+export const SLUDGE_K1_HFO_PURIFIED = 0.015;
+
+/** MARPOL — K₁ for MDO / no purification. */
+export const SLUDGE_K1_NO_PURIFICATION = 0.005;
+
+/** MEPC.1/Circ.642 §7.5 — heated bilge holding note when HFO density exceeds this. */
+export const HFO_DENSITY_REQUIRES_BILGE_HOLDING_KG_M3 = 940;
