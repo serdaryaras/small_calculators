@@ -53,148 +53,144 @@ function fmt(n: number, digits = 1): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: digits });
 }
 
-function appendFirePumpRows(rows: ReportRow[], fire: PumpCapacitiesResult["fire"]) {
-  if (fire.tankerFireBasisNote) {
-    rows.push(
-      row(
-        "Tanker — fire capacity basis",
-        "Passenger bilge reference (not ER bilge)",
-        fire.tankerFireBasisNote,
-        "neutral",
-      ),
-    );
-  }
-  if (fire.passengerBilgeReferenceM3H != null) {
-    rows.push(
-      row(
-        "Cargo rule — bilge reference (passenger formula)",
-        `${fmt(fire.passengerBilgeReferenceM3H)} m³/h`,
-        fire.tankerFireBasisNote
-          ? "Q = 0.00565 × d², d from [6.8.1] on same L, B, D; fire total = 4/3 × this"
-          : "One passenger-ship bilge pump, same L, B, D; cargo fire total = 4/3 × this",
-        "preview",
-      ),
-    );
-  }
-  rows.push(
-    row(
-      "Fire pumps equal?",
-      fire.firePumpsEqual ? "Yes" : "No",
-      fire.firePumpsEqual ? "Total ÷ pump count" : "Asymmetric layout",
-      "preview",
-    ),
-    row(
-      "Total fire pump capacity",
-      `${fmt(fire.totalRequiredM3H)} m³/h`,
-      fire.totalCappedM3H ? "Capped at 180 m³/h (cargo)" : "Rule minimum total",
-      "preview",
-    ),
-    row("Minimum main fire pumps", fire.minMainPumpCount, "SOLAS II-2/10.2.2.1", "preview"),
-    row(
-      "Capacity per pump (equal)",
-      `${fmt(fire.equalSplitCapacityM3H)} m³/h`,
-      `${fmt(fire.totalRequiredM3H)} ÷ ${fire.minMainPumpCount}, min 25 m³/h`,
-      "preview",
-    ),
-  );
-
-  if (fire.asymmetricGuidance) {
-    rows.push(
-      row(
-        "If unequal (optional)",
-        fire.asymmetricGuidance.line,
-        "Smallest at SOLAS floor; others share remaining capacity — informational only",
-        "neutral",
-      ),
-    );
-  }
-
-  rows.push(
-    row(
-      "Emergency fire pump",
-      `${fmt(fire.emergencyRequiredM3H)} m³/h`,
-      fire.emergencyCappedM3H
-        ? "Capped at 72 m³/h (container)"
-        : "≥ 40% of total, FSS Ch.12 absolute min",
-      "preview",
-    ),
-  );
-}
-
-function appendBilgeExtendedRows(
+function appendBilgeRows(
   rows: ReportRow[],
   result: PumpCapacitiesResult,
   status: "preview" | "result",
 ) {
-  const { bilgeExtended } = result;
+  const { bilge } = result;
+  const tanker = bilge.shipType === "tanker";
 
-  if (
-    bilgeExtended.doubleHullCargo &&
-    result.bilge.bilgeMode !== "tanker_machinery"
-  ) {
-    const dh = bilgeExtended.doubleHullCargo;
+  rows.push(
+    section(
+      tanker ? "Machinery-space bilge (tanker)" : "Bilge system",
+      bilge.ruleRef,
+    ),
+    row("Formula", bilge.formulaNote, bilge.ruleRef, status),
+    row(
+      tanker ? "ER bilge main d (formula)" : "Bilge main d (formula)",
+      `${fmt(bilge.dFormulaMm)} mm`,
+      bilge.formulaNote,
+      status,
+    ),
+  );
+
+  if (bilge.dTwiceMm != null) {
     rows.push(
-      section("Double-hull cargo holds", dh.ruleRef),
       row(
-        "Bilge main (B_hold)",
-        `${dh.bilgeMainDiameterMm} mm`,
-        `B_hold = ${dh.holdBreadthM} m — vs ${dh.standardBilgeMainDiameterMm} mm with full B`,
+        "d₁√2 check",
+        `${fmt(bilge.dTwiceMm)} mm`,
+        "Main ≥ branch diameter × √2 (Pt C [6.8.9])",
         status,
       ),
     );
   }
 
-  if (
-    bilgeExtended.tankerMachinery &&
-    result.bilge.bilgeMode !== "tanker_machinery"
-  ) {
-    const tk = bilgeExtended.tankerMachinery;
+  rows.push(
+    row(
+      "Rule diameter d",
+      `${fmt(bilge.dRuleMm)} mm`,
+      tanker ? "max(formula, d₁√2)" : "From [6.8.1] / tanker rule",
+      status,
+    ),
+    row(
+      "Min actual diameter",
+      `${fmt(bilge.dMinActualMm)} mm`,
+      "max(d − 5, 60 mm, largest branch)",
+      status,
+    ),
+    row(
+      "Recommended DN",
+      `DN ${bilge.recommendedDnMm}`,
+      "Next commercial DN ≥ min actual",
+      status,
+    ),
+    row(
+      "Capacity per bilge pump",
+      `${fmt(bilge.capacityPerPumpM3H)} m³/h`,
+      bilge.reducedQ
+        ? "Q = 0.00345 × d² (L < 35 m cargo)"
+        : "Q = 0.00565 × d²",
+      status,
+    ),
+    row("Minimum bilge pumps", bilge.pumpCount, bilge.extraNote, status),
+    row(
+      "Total bilge capacity",
+      `${fmt(bilge.totalCapacityM3H)} m³/h`,
+      `${bilge.pumpCount} × ${fmt(bilge.capacityPerPumpM3H)} m³/h`,
+      status,
+    ),
+  );
+
+  if (bilge.compensationAllowed) {
     rows.push(
-      section("Tanker machinery-space bilge", tk.ruleRef),
       row(
-        "ER bilge main d",
-        `${tk.bilgeMainDiameterMm} mm`,
-        `max(formula ${tk.formulaDiameterMm} mm, 2× branch area → ${tk.minMainFromBranchMm} mm)`,
-        status,
-      ),
-      row(
-        "ER branch suction d₁",
-        `${tk.branchDiameterMm} mm`,
-        `C = ${tk.machineryLengthM} m — BV [6.8.3]`,
-        status,
-      ),
-      row(
-        "ER pump capacity each",
-        `${fmt(tk.capacityPerPumpM3H)} m³/h`,
-        `${tk.waterVelocityMs} m/s through ER bilge main`,
-        status,
+        "One pump may be ≥ 70%",
+        `${fmt(bilge.minOnePumpM3H)} m³/h`,
+        "Compensation allowed (not passenger)",
+        "neutral",
       ),
     );
-  } else if (bilgeExtended.tankerMachinery) {
-    const tk = bilgeExtended.tankerMachinery;
+  }
+
+  if (bilge.cargoAreaPumps > 0) {
     rows.push(
       row(
-        "ER branch suction d₁",
-        `${tk.branchDiameterMm} mm`,
-        `C = ${tk.machineryLengthM} m — BV [6.8.3]; main ≥ ${tk.minMainFromBranchMm} mm (2× branch area)`,
+        "Cargo-area bilge pumps",
+        bilge.cargoAreaPumps,
+        "At least one additional pump — no rule capacity formula",
         status,
       ),
     );
   }
 
-  if (bilgeExtended.branches.length > 0) {
+  if (bilge.numeralInfo) {
+    rows.push(
+      row(
+        "Bilge pump numeral",
+        fmt(bilge.numeralInfo.numeral),
+        `K = ${bilge.numeralInfo.K}, P₁ = ${bilge.numeralInfo.P1}`,
+        status,
+      ),
+    );
+  }
+
+  if (bilge.distributionBoxMm != null) {
+    rows.push(
+      row(
+        "Distribution box (indicative)",
+        `${fmt(bilge.distributionBoxMm)} mm`,
+        "√(d₁² + d₂²) of two largest branches, ≤ main d",
+        "neutral",
+      ),
+    );
+  }
+
+  const branchList = bilge.branches.filter((b) => b.valid);
+  if (branchList.length > 0 || bilge.machineryBranch?.synthetic) {
     rows.push(
       section(
         "Branch bilge suctions",
-        "BV [6.8.3] — d₁ = 25 + 2.16√(L₁·(B+D)), min 50 mm, max 100 mm",
+        "d₁ = max(50, 25 + 2.16√(L₁·(B+D))) mm",
       ),
     );
-    for (const branch of bilgeExtended.branches) {
+    for (const branch of branchList) {
       rows.push(
         row(
           branch.label,
-          `${branch.diameterMm} mm`,
-          `L₁ = ${branch.compartmentLengthM} m · B_used = ${branch.breadthUsedM} m`,
+          `${fmt(branch.d1Mm!)} mm`,
+          `L₁ = ${branch.lengthM} m${branch.isMachinery ? " · machinery" : ""}`,
+          status,
+        ),
+      );
+    }
+    if (bilge.machineryBranch?.synthetic) {
+      const m = bilge.machineryBranch;
+      rows.push(
+        row(
+          m.label,
+          `${fmt(m.d1Mm!)} mm`,
+          `L₀ = ${m.lengthM} m — synthetic from engine-room length`,
           status,
         ),
       );
@@ -202,108 +198,93 @@ function appendBilgeExtendedRows(
   }
 }
 
-function buildPreviewRows(result: PumpCapacitiesResult): ReportRow[] {
-  const { bilge, fire } = result;
-  const rows: ReportRow[] = [];
-
-  const tankerBilge = bilge.bilgeMode === "tanker_machinery";
+function appendFireRows(
+  rows: ReportRow[],
+  fire: PumpCapacitiesResult["fire"],
+  status: "preview" | "result",
+) {
   rows.push(
-    section(
-      tankerBilge ? "Machinery-space bilge (tanker)" : "Bilge system",
-      tankerBilge
-        ? "Pt C [6.8.9] · Pt D Ch 7 Sec 4 — [6.8.1] ship formula not applicable"
-        : "BV NR467 Pt C, Ch 1, Sec 10.",
-    ),
-  );
-  rows.push(
+    section("Fire fighting", "BV NR467 Pt C Ch 4 Sec 6 / SOLAS II-2/10"),
+    row("VT1 (pump number)", fire.vt1Label, `VT1 = ${fire.vt1}`, status),
+    row("VT2 (capacity rule)", fire.vt2Label, `VT2 = ${fire.vt2}`, status),
     row(
-      tankerBilge ? "ER bilge main d" : "Bilge main diameter d",
-      `${bilge.bilgeMainDiameterMm} mm`,
-      tankerBilge ? "d = 25 + 2.16√(C·(B+D))" : "d = 25 + 1.68√(L·(B+D))",
-      "preview",
-    ),
-    row("Water velocity", `${bilge.waterVelocityMs} m/s`, "Through required bilge main", "preview"),
-    row("Capacity per bilge pump", `${fmt(bilge.capacityPerPumpM3H)} m³/h`, bilge.formulaNote, "preview"),
-    row("Minimum bilge pumps", bilge.minPumpCount, "BV [6.7.1] — cargo 2, passenger 3", "preview"),
-    row("Total bilge capacity", `${fmt(bilge.totalRequiredM3H)} m³/h`, `${bilge.minPumpCount} × ${fmt(bilge.capacityPerPumpM3H)} m³/h`, "preview"),
-  );
-  appendBilgeExtendedRows(rows, result, "preview");
-
-  rows.push(section("Fire fighting", "SOLAS II-2/10 via BV Pt C, Ch 4, Sec 6."));
-  appendFirePumpRows(rows, fire);
-
-  return rows;
-}
-
-function buildResultsRows(result: PumpCapacitiesResult): ReportRow[] {
-  const { bilge, fire } = result;
-  const rows: ReportRow[] = [];
-
-  const tankerBilge = bilge.bilgeMode === "tanker_machinery";
-  rows.push(
-    section(
-      tankerBilge ? "Machinery-space bilge — required (tanker)" : "Bilge pumps — required",
-      bilge.ruleRef,
-    ),
-  );
-  rows.push(
-    row(
-      tankerBilge ? "ER bilge main d" : "Bilge main d",
-      `${bilge.bilgeMainDiameterMm} mm`,
-      tankerBilge ? "ER bilge main — not [6.8.1] ship formula" : "Internal diameter of bilge main",
-      "result",
-    ),
-    row("Rule capacity each", `${fmt(bilge.capacityPerPumpM3H)} m³/h`, bilge.formulaNote, "result"),
-    row("Min pump count", bilge.minPumpCount, "Power bilge pumps connected to bilge main", "result"),
-  );
-  appendBilgeExtendedRows(rows, result, "result");
-
-  rows.push(section("Fire pumps — required", "SOLAS II-2/10.2.4 · FSS Code Ch.12"));
-  rows.push(
-    row(
-      "Fire pumps equal?",
-      fire.firePumpsEqual ? "Yes" : "No",
-      fire.firePumpsEqual ? "Equal split" : "Asymmetric layout",
-      "result",
+      "Bilge reference d",
+      `${fmt(fire.dBilgeRefMm)} mm`,
+      "Always general formula 25 + 1.68√(L·(B+D)) — not tanker ER diameter",
+      status,
     ),
     row(
-      "Total capacity",
-      `${fmt(fire.totalRequiredM3H)} m³/h`,
-      fire.totalCappedM3H ? "180 m³/h cap applied" : "Uncapped rule value",
-      "result",
+      "Bilge reference Q",
+      `${fmt(fire.qBilgeRefM3H)} m³/h`,
+      "Q = 0.00565 × d²",
+      status,
     ),
+    row("Total fire capacity", `${fmt(fire.totalRequiredM3H)} m³/h`, fire.capNote, status),
+    row("Main fire pumps", fire.pumpCount, "From VT1", status),
     row(
       "Each pump (equal)",
-      `${fmt(fire.equalSplitCapacityM3H)} m³/h`,
-      `Total ÷ ${fire.minMainPumpCount} main fire pumps`,
-      "result",
+      `${fmt(fire.equalEachM3H)} m³/h`,
+      `Total ÷ ${fire.pumpCount}, min 25 m³/h`,
+      status,
     ),
   );
 
-  if (fire.asymmetricGuidance) {
+  if (!fire.firePumpsEqual) {
     rows.push(
       row(
-        "If unequal (optional)",
-        fire.asymmetricGuidance.line,
-        "Smallest at SOLAS floor; others share remaining capacity — informational only",
+        "Each pump (asymmetric info)",
+        `${fmt(fire.asymmetricEachM3H)} m³/h`,
+        "80% of equal-split floor — informational",
         "neutral",
+      ),
+    );
+  }
+
+  if (fire.monitors > 0) {
+    rows.push(
+      row(
+        "Mobile water monitors",
+        fire.monitors,
+        "2 if B < 30 m, else 4 — 60 m³/h each",
+        status,
       ),
     );
   }
 
   rows.push(
     row(
-      "Emergency pump",
-      `${fmt(fire.emergencyRequiredM3H)} m³/h`,
-      "Independent emergency fire pump where required",
-      "result",
+      "Hydrant pressure",
+      `${fire.hydrantPressureNMm2} N/mm²`,
+      "Minimum pressure at hydrants",
+      status,
+    ),
+    row(
+      "Emergency fire pump",
+      fire.emergencyRequired && fire.emergencyM3H != null
+        ? `${fmt(fire.emergencyM3H)} m³/h`
+        : "Not required",
+      fire.emergencyRequired
+        ? "≥ 40% of total, min 25 m³/h (cargo/tanker ≥ 1000 GT)"
+        : "Passenger ships — not required by this rule set",
+      status,
     ),
   );
+}
 
+function buildPreviewRows(result: PumpCapacitiesResult): ReportRow[] {
+  const rows: ReportRow[] = [];
+  appendBilgeRows(rows, result, "preview");
+  appendFireRows(rows, result.fire, "preview");
+  return rows;
+}
+
+function buildResultsRows(result: PumpCapacitiesResult): ReportRow[] {
+  const rows: ReportRow[] = [];
+  appendBilgeRows(rows, result, "result");
+  appendFireRows(rows, result.fire, "result");
   for (const note of result.notes) {
     rows.push(row("Note", "—", note, "neutral"));
   }
-
   return rows;
 }
 
@@ -316,29 +297,6 @@ export function buildPumpCapacitiesReport(
     row(p.name, p.value, p.description, "input"),
   );
 
-  const resultsRows = buildResultsRows(result);
-
-  const phases: ReportPhase[] = [
-    {
-      id: "input",
-      title: "Input",
-      description: "Ship principal dimensions and fire pump layout.",
-      rows: inputRows,
-    },
-    {
-      id: "preview",
-      title: "Preview",
-      description: "Live bilge and fire pump requirements from current inputs.",
-      rows: buildPreviewRows(result),
-    },
-    {
-      id: "results",
-      title: "Results",
-      description: "Confirmed rule capacities after Calculate.",
-      rows: resultsRows,
-    },
-  ];
-
   return {
     title: `Pump Capacities Report — ${shipName || "Project"}`,
     generatedAt: new Date().toLocaleString("en-GB", {
@@ -346,8 +304,27 @@ export function buildPumpCapacitiesReport(
       timeStyle: "short",
     }),
     summaryNote:
-      "Input · Preview · Results — BV NR467 bilge pumps (Pt C, Ch 1, Sec 10) and fire pumps (Pt C, Ch 4, Sec 6 / SOLAS II-2).",
-    phases,
+      "Input · Preview · Results — BV NR467 bilge (Pt C Ch 1 Sec 10 · Pt D Ch 7) and fire (Pt C Ch 4 Sec 6), aligned with 11-Pumps.",
+    phases: [
+      {
+        id: "input",
+        title: "Input",
+        description: "Ship principal dimensions and options.",
+        rows: inputRows,
+      },
+      {
+        id: "preview",
+        title: "Preview",
+        description: "Live bilge and fire pump requirements from current inputs.",
+        rows: buildPreviewRows(result),
+      },
+      {
+        id: "results",
+        title: "Results",
+        description: "Confirmed rule capacities after Calculate.",
+        rows: buildResultsRows(result),
+      },
+    ],
     overallPass: null,
     overallLabel: "Rule capacities calculated — verify with class society.",
   };

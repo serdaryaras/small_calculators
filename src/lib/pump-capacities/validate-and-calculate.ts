@@ -1,10 +1,5 @@
 import { calculatePumpCapacities } from "./calculation";
-import type {
-  BilgeCompartmentInput,
-  BilgeCompartmentKind,
-  PumpCapacitiesResult,
-  ShipType,
-} from "./types";
+import type { BilgeBranchInput, PumpCapacitiesResult, ShipType, Vt1, Vt2 } from "./types";
 
 export type PumpCapacitiesFormState = {
   shipName: string;
@@ -13,14 +8,19 @@ export type PumpCapacitiesFormState = {
   breadthM: number;
   depthM: number;
   grossTonnage: number;
-  shortCargoShip: boolean;
-  containerTiers5Plus: boolean;
-  firePumpsEqual: boolean;
-  isTanker: boolean;
-  machinerySpaceLengthM: number;
-  doubleHullCargoHolds: boolean;
+  useHoldBreadth: boolean;
   holdBreadthAmidshipsM: number;
-  bilgeCompartments: BilgeCompartmentInput[];
+  engineRoomLengthM: number;
+  passengerM: number;
+  passengerP: number;
+  passengerV: number;
+  passengerN: number;
+  passengerPAbove: number;
+  fiveTiers: boolean;
+  vt1: Vt1 | null;
+  vt2: Vt2 | null;
+  firePumpsEqual: boolean;
+  branches: BilgeBranchInput[];
 };
 
 function pushPositive(errors: string[], label: string, value: number) {
@@ -37,12 +37,12 @@ export function validatePumpCapacitiesForm(form: PumpCapacitiesFormState): strin
   pushPositive(errors, "D — Depth", form.depthM);
   pushPositive(errors, "Gross tonnage", form.grossTonnage);
 
-  if (form.shipType === "cargo" && form.isTanker) {
-    pushPositive(errors, PUMP_LABELS.machinerySpaceLength, form.machinerySpaceLengthM);
+  if (form.shipType === "tanker") {
+    pushPositive(errors, "Engine-room length L₀", form.engineRoomLengthM);
   }
 
-  if (form.shipType === "cargo" && form.doubleHullCargoHolds) {
-    pushPositive(errors, PUMP_LABELS.holdBreadthAmidships, form.holdBreadthAmidshipsM);
+  if (form.useHoldBreadth && form.shipType === "cargo") {
+    pushPositive(errors, "Hold breadth amidships B_hold", form.holdBreadthAmidshipsM);
     if (
       Number.isFinite(form.holdBreadthAmidshipsM) &&
       form.holdBreadthAmidshipsM > form.breadthM
@@ -51,22 +51,20 @@ export function validatePumpCapacitiesForm(form: PumpCapacitiesFormState): strin
     }
   }
 
-  form.bilgeCompartments.forEach((compartment, index) => {
+  if (form.shipType === "passenger") {
+    pushPositive(errors, "V — volume of machinery spaces", form.passengerV);
+  }
+
+  form.branches.forEach((branch, index) => {
     pushPositive(
       errors,
-      `${PUMP_LABELS.bilgeCompartmentLength} (${compartment.label || `compartment ${index + 1}`})`,
-      compartment.lengthM,
+      `Compartment length L₁ (${branch.label || `compartment ${index + 1}`})`,
+      branch.lengthM,
     );
   });
 
   return errors;
 }
-
-const PUMP_LABELS = {
-  machinerySpaceLength: "Machinery space length C",
-  holdBreadthAmidships: "Hold breadth amidships B_hold",
-  bilgeCompartmentLength: "Compartment length L₁",
-} as const;
 
 export function calculatePumpCapacitiesFromForm(
   form: PumpCapacitiesFormState,
@@ -76,39 +74,34 @@ export function calculatePumpCapacitiesFromForm(
     throw new Error(errors.join("\n"));
   }
 
-  const shortCargoShip =
-    form.shipType === "cargo" &&
-    (form.shortCargoShip || form.lengthM < 35);
-
   return calculatePumpCapacities({
     shipType: form.shipType,
     lengthM: form.lengthM,
     breadthM: form.breadthM,
     depthM: form.depthM,
     grossTonnage: form.grossTonnage,
-    shortCargoShip,
-    containerTiers5Plus: form.containerTiers5Plus,
-    firePumpsEqual: form.firePumpsEqual,
-    isTanker: form.shipType === "cargo" && form.isTanker,
-    machinerySpaceLengthM:
-      form.shipType === "cargo" && form.isTanker
-        ? form.machinerySpaceLengthM
-        : null,
-    doubleHullCargoHolds:
-      form.shipType === "cargo" && form.doubleHullCargoHolds,
+    useHoldBreadth: form.shipType === "cargo" && form.useHoldBreadth,
     holdBreadthAmidshipsM:
-      form.shipType === "cargo" && form.doubleHullCargoHolds
+      form.shipType === "cargo" && form.useHoldBreadth
         ? form.holdBreadthAmidshipsM
         : null,
-    bilgeCompartments: form.bilgeCompartments,
+    engineRoomLengthM:
+      form.shipType === "tanker" ? form.engineRoomLengthM : null,
+    passengerM: form.passengerM,
+    passengerP: form.passengerP,
+    passengerV: form.passengerV,
+    passengerN: form.passengerN,
+    passengerPAbove: form.passengerPAbove,
+    fiveTiers: form.fiveTiers,
+    vt1: form.vt1,
+    vt2: form.vt2,
+    firePumpsEqual: form.firePumpsEqual,
+    branches: form.branches,
   });
 }
 
-export const BILGE_COMPARTMENT_KIND_OPTIONS: {
-  value: BilgeCompartmentKind;
-  label: string;
-}[] = [
-  { value: "cargo_hold", label: "Cargo hold" },
-  { value: "machinery", label: "Machinery space" },
-  { value: "other", label: "Other dry space" },
+export const SHIP_TYPE_OPTIONS: { value: ShipType; label: string }[] = [
+  { value: "cargo", label: "Cargo ship" },
+  { value: "passenger", label: "Passenger ship" },
+  { value: "tanker", label: "Tanker" },
 ];

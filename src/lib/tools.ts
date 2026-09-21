@@ -34,7 +34,7 @@ export const tools: Tool[] = [
     id: "pump-capacities",
     title: "Pump Capacities",
     description:
-      "Bilge and fire-fighting pump capacities per Bureau Veritas NR467 (Pt C, Ch 1 & Ch 4).",
+      "Bilge and fire pump capacities — BV NR467 method (cargo / passenger / tanker), aligned with 11-Pumps.",
     href: "/pump-capacities",
     category: "Mechanical",
   },
