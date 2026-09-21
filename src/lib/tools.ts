@@ -26,7 +26,8 @@ export const tools: Tool[] = [
   {
     id: "tank-capacities",
     title: "Tank Capacities",
-    description: "Fuel oil tank capacities, service tanks and waste holding volumes.",
+    description:
+      "Dirty oil, wastewater & garbage — same UI and method as tank-cap / 02b-Tanklarv2.",
     href: "/tank-capacities",
     category: "Mechanical",
   },

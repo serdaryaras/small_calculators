@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ARTI Tank Capacities</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <img class="brand-logo" src="arti-logo.jpg" alt="ARTI Engineering" />
+          <div>
+            <p class="eyebrow">ARTI Engineering · Tank capacities</p>
+            <h1>Dirty Oil, Wastewater &amp; Garbage</h1>
+          </div>
+        </div>
+        <div class="top-meta">
+          <span class="chip">MARPOL I/12 sludge</span>
+          <span class="chip">Circ.642 oily bilge</span>
+          <span class="chip">BV Pt F Ch 9 Tab 1</span>
+          <button id="btnPdf" class="btn-pdf" type="button">PDF report</button>
+        </div>
+      </header>
+
+      <div id="errorBox" class="errors hidden"></div>
+      <div id="warnBox" class="warnings hidden"></div>
+
+      <section class="type-row" aria-label="Ship type">
+        <button class="type-card" data-type="1">
+          <span class="type-kicker">01</span>
+          <strong>Cruise ship</strong>
+          <small>High hotel load</small>
+        </button>
+        <button class="type-card" data-type="2">
+          <span class="type-kicker">02</span>
+          <strong>Night Ro-Pax</strong>
+          <small>Overnight passengers</small>
+        </button>
+        <button class="type-card" data-type="3">
+          <span class="type-kicker">03</span>
+          <strong>Day Ro-Pax</strong>
+          <small>Day voyages</small>
+        </button>
+        <button class="type-card is-active" data-type="4">
+          <span class="type-kicker">04</span>
+          <strong>Cargo ship</strong>
+          <small>Crew only</small>
+        </button>
+      </section>
+
+      <ul class="legend" aria-label="Tank colour key">
+        <li class="tank-fuel"><i></i><span>Fuel</span><em id="legFuel">Range ÷ Vs</em></li>
+        <li class="tank-fw"><i></i><span>Fresh water</span><em id="legFw">Autonomy / Range ÷ Vs</em></li>
+        <li class="tank-black"><i></i><span>Black water</span><em id="legBlack">NDP ≥ 7 d</em></li>
+        <li class="tank-gray"><i></i><span>Grey water</span><em id="legGray">NDP ≥ 7 d</em></li>
+        <li class="tank-sludge"><i></i><span>Sludge</span><em id="legSludge">Autonomy / Range ÷ Vs / 30 d</em></li>
+        <li class="tank-bilge"><i></i><span>Oily bilge</span><em>Circ.642 rule</em></li>
+        <li class="tank-solid"><i></i><span>Solid waste</span><em id="legSolid">Autonomy / Range ÷ Vs</em></li>
+      </ul>
+
+      <main class="layout">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Ship particulars</h2>
+            <p>Duration inputs</p>
+          </div>
+          <label>Ship / project name
+            <input id="shipName" type="text" value="Newbuilding" />
+          </label>
+          <div class="grid-2">
+            <label class="ink-fuel"><span>Vs (kn)</span>
+              <input id="vsKn" type="number" min="0.1" step="0.1" value="12" />
+            </label>
+            <label class="ink-fuel"><span>Range (nm)</span>
+              <input id="rangeNm" type="number" min="1" step="1" value="6000" />
+            </label>
+            <label class="ink-fw"><span>Autonomy (days)</span>
+              <span class="input-keys"><i class="tank-fw"></i><i class="tank-sludge"></i><i class="tank-solid"></i></span>
+              <input id="enduranceDays" type="number" min="0" step="0.5" value="10" />
+            </label>
+            <label class="ink-ww"><span>No-discharge period (days)</span>
+              <span class="input-keys"><i class="tank-black"></i><i class="tank-gray"></i></span>
+              <input id="nonDischargeDays" type="number" min="0" step="0.5" value="7" />
+            </label>
+            <label><span>Persons on board</span>
+              <input id="personsOnBoard" type="number" min="1" step="1" value="15" />
+            </label>
+            <label class="ink-sludge"><span>K₁ — HFO purification</span>
+              <span class="input-keys"><i class="tank-sludge"></i></span>
+              <select id="sludgeK1Mode">
+                <option value="auto" selected>Auto from main-engine fuel</option>
+                <option value="hfo_purified">HFO purified for ME (K₁ = 0.015)</option>
+                <option value="diesel_or_no_purification">MDO / no purification (K₁ = 0.005)</option>
+              </select>
+            </label>
+          </div>
+          <div class="extras">
+            <label class="check">
+              <input id="vacuumToilet" type="checkbox" />
+              Vacuum toilet (12 L/person/day · BV Tab 1)
+            </label>
+            <label class="check">
+              <input id="withCompactor" type="checkbox" />
+              Waste compactor
+            </label>
+            <label class="check">
+              <input id="solidWasteIncinerator" type="checkbox" />
+              Solid-waste incinerator (volume ×0.6, not glass/tins)
+            </label>
+          </div>
+        </section>
+
+        <section class="panel panel-span-2">
+          <div class="panel-head">
+            <h2>Machinery</h2>
+            <p>kg/h = P × SFOC / 1000 <span id="statusDot" class="dot"></span></p>
+          </div>
+          <div class="machinery-grid">
+            <div>
+              <div class="table-toolbar">
+                <span class="mini-label">Main engines</span>
+                <button id="addMe" class="btn-copper" type="button">+ ME</button>
+              </div>
+              <div class="table-wrap compact">
+                <table class="engine-table">
+                  <colgroup>
+                    <col />
+                    <col class="col-kw" />
+                    <col class="col-sfoc" />
+                    <col class="col-fuel" />
+                    <col class="col-del" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>Label</th>
+                      <th>kW</th>
+                      <th>SFOC</th>
+                      <th>Fuel</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="meBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <div class="table-toolbar">
+                <span class="mini-label">Auxiliary engines</span>
+                <button id="addAe" class="btn-copper" type="button">+ AE</button>
+              </div>
+              <div class="table-wrap compact">
+                <table class="engine-table">
+                  <colgroup>
+                    <col />
+                    <col class="col-kw" />
+                    <col class="col-sfoc" />
+                    <col class="col-fuel" />
+                    <col class="col-del" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>Label</th>
+                      <th>kW</th>
+                      <th>SFOC</th>
+                      <th>Fuel</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="aeBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="machinery-boilers">
+              <div class="table-toolbar">
+                <span class="mini-label">Boilers</span>
+                <button id="addBoiler" class="btn-copper" type="button">+ Boiler</button>
+              </div>
+              <div class="table-wrap compact">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Label</th>
+                      <th>kg/h</th>
+                      <th>Fuel</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="boilerBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <p class="row-label">Fuel tank · sludge · oily bilge</p>
+      <section class="layout oily-layout">
+        <section class="panel fire-panel tank-fuel">
+          <div class="panel-head">
+            <h2>Fuel tank</h2>
+            <p id="fuelDays">—</p>
+          </div>
+          <div class="readouts">
+            <article class="is-total">
+              <small>Capacity</small>
+              <strong id="outFuelTank">—</strong>
+            </article>
+          </div>
+          <dl class="facts" id="oilyInputFacts"></dl>
+          <p class="note">C is daily fuel volume from all consumers at service load. P is the sum of main-engine ratings.</p>
+        </section>
+        <section class="panel fire-panel tank-sludge">
+          <div class="panel-head">
+            <h2>Sludge tank</h2>
+            <p><span id="sludgeDays">—</span> <span id="sludgeDot" class="dot"></span></p>
+          </div>
+          <div class="readouts">
+            <article class="is-total">
+              <small>V₁ sludge</small>
+              <strong id="outSludge">—</strong>
+              <em>K₁ · C · D</em>
+            </article>
+          </div>
+          <dl class="facts" id="sludgeFacts"></dl>
+        </section>
+        <aside class="console fire-panel tank-bilge">
+          <div class="panel-head">
+            <h2>Oily bilge holding</h2>
+            <p>Circ.642 §8.3 <span id="bilgeDot" class="dot"></span></p>
+          </div>
+          <div class="readouts">
+            <article class="is-total">
+              <small>V bilge</small>
+              <strong id="outBilge">—</strong>
+              <em>from P</em>
+            </article>
+          </div>
+          <dl class="facts" id="bilgeFacts"></dl>
+          <p class="note" id="bilgeNote"></p>
+        </aside>
+      </section>
+
+      <p class="row-label">Solid waste · wastewater · BV Pt F Ch 9 Sec 2</p>
+      <section class="layout waste-layout">
+        <aside class="console fire-panel tank-solid">
+          <div class="panel-head">
+            <h2>Solid waste</h2>
+            <p id="solidNoteHead">—</p>
+          </div>
+          <div class="readouts" id="solidReadouts"></div>
+          <dl class="facts" id="solidFacts"></dl>
+        </aside>
+        <section class="panel fire-panel tank-black">
+          <div class="panel-head">
+            <h2>Black-water tank</h2>
+            <p id="blackDays">—</p>
+          </div>
+          <div class="readouts">
+            <article class="is-total">
+              <small id="outBlackHint">Holding</small>
+              <strong id="outBlack">—</strong>
+            </article>
+          </div>
+          <dl class="facts" id="blackFacts"></dl>
+        </section>
+        <section class="panel fire-panel tank-gray">
+          <div class="panel-head">
+            <h2>Gray-water tank</h2>
+            <p id="grayDays">—</p>
+          </div>
+          <div class="readouts">
+            <article class="is-total">
+              <small id="outGrayHint">Holding</small>
+              <strong id="outGray">—</strong>
+            </article>
+          </div>
+          <dl class="facts" id="grayFacts"></dl>
+        </section>
+      </section>
+    </div>
+    <script src="engine.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
